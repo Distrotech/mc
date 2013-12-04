@@ -194,15 +194,18 @@ listbox_draw (WListbox * l, gboolean focused)
 static int
 listbox_check_hotkey (WListbox * l, int key)
 {
-    int i;
-    GList *le;
-
-    for (i = 0, le = g_queue_peek_head_link (l->list); le != NULL; i++, le = g_list_next (le))
+    if (!listbox_is_empty (l))
     {
-        WLEntry *e = LENTRY (le->data);
+        int i;
+        GList *le;
 
-        if (e->hotkey == key)
-            return i;
+        for (i = 0, le = g_queue_peek_head_link (l->list); le != NULL; i++, le = g_list_next (le))
+        {
+            WLEntry *e = LENTRY (le->data);
+
+            if (e->hotkey == key)
+                return i;
+        }
     }
 
     return (-1);
@@ -257,6 +260,9 @@ listbox_execute_cmd (WListbox * l, unsigned long command)
     int i;
     Widget *w = WIDGET (l);
     int length;
+
+    if (l->list == NULL || g_queue_is_empty (l->list))
+        return MSG_NOT_HANDLED;
 
     switch (command)
     {
@@ -472,7 +478,7 @@ listbox_event (Gpm_Event * event, void *data)
     if ((event->type & GPM_DOWN) != 0)
         dlg_select_widget (l);
 
-    if (l->list == NULL)
+    if (g_queue_is_empty (l->list))
         return MOU_NORMAL;
 
     if ((event->type & (GPM_DOWN | GPM_DRAG)) != 0)
@@ -566,7 +572,7 @@ listbox_new (int y, int x, int height, int width, gboolean deletable, lcback_fn 
 int
 listbox_search_text (WListbox * l, const char *text)
 {
-    if (l != NULL)
+    if (!listbox_is_empty (l))
     {
         int i;
         GList *le;
@@ -599,11 +605,12 @@ void
 listbox_select_last (WListbox * l)
 {
     int lines = WIDGET (l)->lines;
-    int length;
+    int length = 0;
 
-    length = g_queue_get_length (l->list);
+    if (!listbox_is_empty (l))
+        length = g_queue_get_length (l->list);
 
-    l->pos = length - 1;
+    l->pos = length > 0 ? length - 1 : 0;
     l->top = length > lines ? length - lines : 0;
 }
 
@@ -616,7 +623,7 @@ listbox_select_entry (WListbox * l, int dest)
     int pos;
     gboolean top_seen = FALSE;
 
-    if (dest < 0)
+    if (listbox_is_empty (l) || dest < 0)
         return;
 
     /* Special case */
@@ -670,7 +677,7 @@ listbox_get_current (WListbox * l, char **string, void **extra)
 WLEntry *
 listbox_get_nth_item (const WListbox * l, int pos)
 {
-    if (l != NULL && l->list != NULL && pos >= 0)
+    if (!listbox_is_empty (l) && pos >= 0)
     {
         GList *item;
 
