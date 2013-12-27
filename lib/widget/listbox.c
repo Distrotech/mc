@@ -234,7 +234,7 @@ listbox_select_pos (WListbox * l, int base, int pos)
 static void
 listbox_fwd (WListbox * l)
 {
-    if (l->pos + 1 >= g_queue_get_length (l->list))
+    if ((guint) l->pos + 1 >= g_queue_get_length (l->list))
         listbox_select_first (l);
     else
         listbox_select_entry (l, l->pos + 1);
