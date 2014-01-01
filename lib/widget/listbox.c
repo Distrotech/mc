@@ -364,8 +364,6 @@ listbox_append_item (WListbox * l, WLEntry * e, listbox_append_t pos)
 
     case LISTBOX_APPEND_BEFORE:
         g_queue_insert_before (l->list, g_queue_peek_nth_link (l->list, (guint) l->pos), e);
-        if (l->pos > 0)
-            l->pos--;
         break;
 
     case LISTBOX_APPEND_AFTER:
