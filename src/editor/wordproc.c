@@ -2,7 +2,7 @@
    Word-processor mode for the editor: does dynamic
    paragraph formatting.
 
-   Copyright (C) 2011, 2013
+   Copyright (C) 2011-2014
    The Free Software Foundation, Inc.
 
    Copyright (C) 1996 Paul Sheer
