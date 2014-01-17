@@ -52,6 +52,30 @@
 /* --------------------------------------------------------------------------------------------- */
 
 static void
+scrollbar_set_size (WScrollBar *scrollbar)
+{
+    Widget *w = WIDGET (scrollbar);
+    Widget *parent = scrollbar->parent;
+
+    switch (scrollbar->type)
+    {
+    case SCROLLBAR_VERTICAL:
+        w->y = parent->y - 1;
+        w->x = parent->cols - 2;
+        w->lines = parent->lines - 2;
+        w->cols = 1;
+        break;
+    default:
+        w->x = parent->x + 1;
+        w->y = parent->lines ;
+        w->cols = parent->cols - 2;
+        w->lines = 1;
+    }
+}
+
+/* --------------------------------------------------------------------------------------------- */
+
+static void
 scrollbar_draw_horizontal (WScrollBar * scrollbar)
 {
     Widget *w = WIDGET (scrollbar);
@@ -129,6 +153,11 @@ scrollbar_callback (Widget * w, Widget * sender, widget_msg_t msg, int parm, voi
     switch (msg)
     {
     case MSG_INIT:
+//        w->pos_flags = WPOS_KEEP_RIGHT | WPOS_KEEP_BOTTOM;
+        return MSG_HANDLED;
+
+    case MSG_RESIZE:
+        scrollbar_set_size (scrollbar);
         return MSG_HANDLED;
 
     case MSG_FOCUS:
@@ -165,31 +194,15 @@ scrollbar_new (Widget * parent, scrollbar_type_t type)
 {
     WScrollBar *scrollbar;
     Widget *widget;
-    int x, y;
-    int cols = 1;
-    int lines = 1;
 
     scrollbar = g_new (WScrollBar, 1);
     scrollbar->type = type;
 
-    switch (type)
-    {
-    case SCROLLBAR_VERTICAL:
-        x = parent->cols - 2;
-        y = parent->y - 1;
-        lines = parent->lines - 2;
-        break;
-    default:
-        x = parent->x + 1;
-        y = parent->lines - 2;
-        cols = parent->cols - 2;
-    }
-
     widget = WIDGET (scrollbar);
+    widget_init (widget, 1, 1, 1, 1, scrollbar_callback, NULL);
 
-    widget_init (widget, y, x, lines, cols, scrollbar_callback, NULL);
     scrollbar->parent = parent;
-    widget->owner = parent->owner;
+    scrollbar_set_size (scrollbar);
 
     widget_want_cursor (widget, FALSE);
     widget_want_hotkey (widget, FALSE);
