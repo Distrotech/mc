@@ -89,7 +89,7 @@ scrollbar_draw_horizontal (WScrollBar * scrollbar)
 
     for (i = 0; i < w->cols; i++)
     {
-        widget_move (w, w->lines, i);
+        widget_move (w, 0, i);
         if (i != column)
             tty_print_char ('!');
         else
@@ -112,7 +112,7 @@ scrollbar_draw_vertical (WScrollBar * scrollbar)
 
     for (i = 0; i < w->lines; i++)
     {
-        widget_move (w, i, w->cols);
+        widget_move (w, i, 0);
         if (i != line)
             tty_print_char ('|');
         else
