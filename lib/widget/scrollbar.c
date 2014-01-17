@@ -48,6 +48,7 @@
 
 /*** file scope variables ************************************************************************/
 
+/* --------------------------------------------------------------------------------------------- */
 /*** file scope functions ************************************************************************/
 /* --------------------------------------------------------------------------------------------- */
 
@@ -55,20 +56,20 @@ static void
 scrollbar_set_size (WScrollBar *scrollbar)
 {
     Widget *w = WIDGET (scrollbar);
-    Widget *parent = scrollbar->parent;
+    Widget *p = scrollbar->parent;
 
     switch (scrollbar->type)
     {
     case SCROLLBAR_VERTICAL:
-        w->y = parent->y - 1;
-        w->x = parent->cols - 2;
-        w->lines = parent->lines - 2;
+        w->y = p->y;
+        w->x = p->x + p->cols - 1;
+        w->lines = p->lines;
         w->cols = 1;
         break;
     default:
-        w->x = parent->x + 1;
-        w->y = parent->lines ;
-        w->cols = parent->cols - 2;
+        w->x = p->x;
+        w->y = p->y + p->lines - 1;
+        w->cols = p->cols;
         w->lines = 1;
     }
 }
@@ -79,14 +80,14 @@ static void
 scrollbar_draw_horizontal (WScrollBar * scrollbar)
 {
     Widget *w = WIDGET (scrollbar);
-    int column = 1;
+    int column = 0;
     int i;
 
     /* Now draw the nice relative pointer */
     if (*scrollbar->total != 0)
-        column = 1+ *scrollbar->current * (w->cols-1) / *scrollbar->total;
+        column = *scrollbar->current * w->cols / *scrollbar->total;
 
-    for (i = 1; i < w->cols - 1; i++)
+    for (i = 0; i < w->cols; i++)
     {
         widget_move (w, w->lines, i);
         if (i != column)
