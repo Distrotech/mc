@@ -1,11 +1,11 @@
 /*
    Widgets for the Midnight Commander: scrollbar
 
-   Copyright (C) 2013
+   Copyright (C) 2014
    The Free Software Foundation, Inc.
 
    Authors:
-   Slava Zanko <slavazanko@gmail.com>, 2013
+   Slava Zanko <slavazanko@gmail.com>, 2014
 
    This file is part of the Midnight Commander.
 
@@ -57,20 +57,43 @@ scrollbar_set_size (WScrollBar *scrollbar)
 {
     Widget *w = WIDGET (scrollbar);
     Widget *p = scrollbar->parent;
+    Widget *o = WIDGET (p->owner);
+    int py = p->y;
+    int px = p->x;
+
+    /* There folloing cases are possible here:
+       1. Parent is in dialog, scrollbar isn't.
+          Parents coordinates are absolute. Scrollbar's coordinate are relative to owner.
+          We need relative parent's coordinates here to place scrollbar properly.
+       2. Parent and scrollbar are in dialog.
+          Parent's and scrollbar's coordinates are absolute. Use them.
+       3. Parent and scrollbar aren't in dialog.
+          Parent's and scrollbar's coordinates are relative to owner. Use them.
+       4. Parent isn't in dialog, scrollbar is.
+          This is abnormal and should not happen. */
+
+    if (o != NULL && w->owner == NULL)
+    {
+        /* Get relative parent's coordinates */
+        py -= o->y;
+        px -= o->x;
+    }
 
     switch (scrollbar->type)
     {
     case SCROLLBAR_VERTICAL:
-        w->y = p->y;
-        w->x = p->x + p->cols - 1;
+        w->y = py;
+        w->x = px + p->cols;
         w->lines = p->lines;
         w->cols = 1;
         break;
+
     default:
-        w->x = p->x;
-        w->y = p->y + p->lines - 1;
+        w->x = px;
+        w->y = py + p->lines;
         w->cols = p->cols;
         w->lines = 1;
+        break;
     }
 }
 

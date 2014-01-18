@@ -365,8 +365,8 @@ history_show (GList ** history, Widget * widget, int current)
     {
         WScrollBar *scrollbar;
 
-        scrollbar = scrollbar_new (query_list, SCROLLBAR_VERTICAL);
-//        scrollbar = scrollbar_new (query_list, SCROLLBAR_HORISONTAL);
+        scrollbar = scrollbar_new (WIDGET (query_list), SCROLLBAR_VERTICAL);
+//        scrollbar = scrollbar_new (WIDGET (query_list), SCROLLBAR_HORISONTAL);
         scrollbar_set_current (scrollbar, &query_list->pos);
         scrollbar_set_total (scrollbar, &query_list->count);
         scrollbar_set_first_displayed (scrollbar, &query_list->top);
