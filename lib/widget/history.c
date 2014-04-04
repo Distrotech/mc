@@ -46,6 +46,7 @@
 
 #include "lib/tty/tty.h"        /* LINES, COLS */
 #include "lib/mcconfig.h"       /* for history loading and saving */
+#include "lib/event.h"
 #include "lib/fileloc.h"
 #include "lib/strutil.h"
 #include "lib/util.h"           /* list_append_unique */
@@ -343,7 +344,7 @@ history_show (GList ** history, Widget * widget, int current)
         /* draw list entries from bottom upto top */
         listbox_set_list (query_list, hlist);
         if (current < 0 || (size_t) current >= count)
-            listbox_select_last (query_list);
+            mc_event_raise (MC_WLISTBOX_EVENT_GROUP, "go_bottom", query_list);
         else
             listbox_select_entry (query_list, count - 1 - (size_t) current);
     }

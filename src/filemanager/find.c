@@ -926,7 +926,7 @@ find_add_match (const char *dir, const char *file)
 
     /* Don't scroll */
     if (matches == 0)
-        listbox_select_first (find_list);
+        mc_event_raise (MC_WLISTBOX_EVENT_GROUP, "go_top", find_list);
     widget_redraw (WIDGET (find_list));
 
     matches++;

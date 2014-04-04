@@ -25,10 +25,10 @@ typedef struct WButtonBar
 {
     Widget widget;
     gboolean visible;           /* Is it visible? */
+    const char *keymap_name;
     struct
     {
         char *text;
-        unsigned long command;
         Widget *receiver;
         int end_coord;          /* cumulative width of buttons so far */
     } labels[BUTTONBAR_LABELS_NUM];
@@ -40,9 +40,8 @@ struct global_keymap_t;
 
 /*** declarations of public functions ************************************************************/
 
-WButtonBar *buttonbar_new (gboolean visible);
-void buttonbar_set_label (WButtonBar * bb, int idx, const char *text,
-                          const struct global_keymap_t *keymap, const Widget * receiver);
+WButtonBar *buttonbar_new (gboolean visible, const char *keymap_name);
+void buttonbar_set_label (WButtonBar * bb, int idx, const char *text, const Widget * receiver);
 WButtonBar *find_buttonbar (const WDialog * h);
 
 /*** inline functions ****************************************************************************/

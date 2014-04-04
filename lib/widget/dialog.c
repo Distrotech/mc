@@ -66,8 +66,6 @@ int fast_refresh = 0;
 /* left click outside of dialog closes it */
 int mouse_close_dialog = 0;
 
-const global_keymap_t *dialog_map = NULL;
-
 /*** file scope macro definitions ****************************************************************/
 
 /*** file scope type declarations ****************************************************************/
@@ -270,92 +268,6 @@ refresh_cmd (void)
 
 /* --------------------------------------------------------------------------------------------- */
 
-static cb_ret_t
-dlg_execute_cmd (WDialog * h, unsigned long command)
-{
-    cb_ret_t ret = MSG_HANDLED;
-    switch (command)
-    {
-    case CK_Ok:
-        h->ret_value = B_ENTER;
-        dlg_stop (h);
-        break;
-    case CK_Cancel:
-        h->ret_value = B_CANCEL;
-        dlg_stop (h);
-        break;
-
-    case CK_Up:
-    case CK_Left:
-        dlg_one_up (h);
-        break;
-    case CK_Down:
-    case CK_Right:
-        dlg_one_down (h);
-        break;
-
-    case CK_Help:
-        {
-            ev_help_t event_data = { NULL, h->help_ctx };
-            mc_event_raise (MCEVENT_GROUP_CORE, "help", &event_data);
-        }
-        break;
-
-    case CK_Suspend:
-        mc_event_raise (MCEVENT_GROUP_CORE, "suspend", NULL);
-        refresh_cmd ();
-        break;
-    case CK_Refresh:
-        refresh_cmd ();
-        break;
-
-    case CK_ScreenList:
-        if (!h->modal)
-            dialog_switch_list ();
-        else
-            ret = MSG_NOT_HANDLED;
-        break;
-    case CK_ScreenNext:
-        if (!h->modal)
-            dialog_switch_next ();
-        else
-            ret = MSG_NOT_HANDLED;
-        break;
-    case CK_ScreenPrev:
-        if (!h->modal)
-            dialog_switch_prev ();
-        else
-            ret = MSG_NOT_HANDLED;
-        break;
-
-    default:
-        ret = MSG_NOT_HANDLED;
-    }
-
-    return ret;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static cb_ret_t
-dlg_handle_key (WDialog * h, int d_key)
-{
-    unsigned long command;
-
-    command = keybind_lookup_keymap_command (dialog_map, d_key);
-
-    if (command == CK_IgnoreKey)
-        return MSG_NOT_HANDLED;
-
-    if (send_message (h, NULL, MSG_ACTION, command, NULL) == MSG_HANDLED
-        || dlg_execute_cmd (h, command) == MSG_HANDLED)
-        return MSG_HANDLED;
-
-    return MSG_NOT_HANDLED;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
 static int
 dlg_mouse_event (WDialog * h, Gpm_Event * event)
 {
@@ -518,7 +430,7 @@ dlg_key_event (WDialog * h, int d_key)
         handled = send_message (h, NULL, MSG_UNHANDLED_KEY, d_key, NULL);
 
     if (handled == MSG_NOT_HANDLED)
-        handled = dlg_handle_key (h, d_key);
+        mc_keymap_process_group (MC_WDIALOG_KEYMAP_GROUP, d_key, h, NULL);
 
     (void) handled;
     send_message (h, NULL, MSG_POST_KEY, d_key, NULL);
@@ -585,10 +497,287 @@ dlg_find_widget_by_id (gconstpointer a, gconstpointer b)
 }
 
 /* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wdialog_cmd_ok (const gchar * event_group_name, const gchar * event_name,
+                   gpointer init_data, gpointer data)
+{
+    WDialog *h = (WDialog *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    h->ret_value = B_ENTER;
+    dlg_stop (h);
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wdialog_cmd_cancel (const gchar * event_group_name, const gchar * event_name,
+                       gpointer init_data, gpointer data)
+{
+    WDialog *h = (WDialog *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    h->ret_value = B_CANCEL;
+    dlg_stop (h);
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wdialog_cmd_up (const gchar * event_group_name, const gchar * event_name,
+                   gpointer init_data, gpointer data)
+{
+    WDialog *h = (WDialog *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    dlg_one_up (h);
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wdialog_cmd_down (const gchar * event_group_name, const gchar * event_name,
+                     gpointer init_data, gpointer data)
+{
+    WDialog *h = (WDialog *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    dlg_one_down (h);
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wdialog_cmd_help (const gchar * event_group_name, const gchar * event_name,
+                     gpointer init_data, gpointer data)
+{
+    WDialog *h = (WDialog *) data;
+    ev_help_t event_data = { NULL, h->help_ctx };
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    mc_event_raise (MCEVENT_GROUP_CORE, "help", &event_data);
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wdialog_cmd_suspend (const gchar * event_group_name, const gchar * event_name,
+                        gpointer init_data, gpointer data)
+{
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+    (void) data;
+
+    mc_event_raise (MCEVENT_GROUP_CORE, "suspend", NULL);
+    refresh_cmd ();
+
+    return TRUE;
+}
+
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wdialog_cmd_refresh (const gchar * event_group_name, const gchar * event_name,
+                        gpointer init_data, gpointer data)
+{
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+    (void) data;
+
+    refresh_cmd ();
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wdialog_cmd_show_list (const gchar * event_group_name, const gchar * event_name,
+                          gpointer init_data, gpointer data)
+{
+    WDialog *h = (WDialog *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (!h->modal)
+        dialog_switch_list ();
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wdialog_cmd_switch_next (const gchar * event_group_name, const gchar * event_name,
+                            gpointer init_data, gpointer data)
+{
+    WDialog *h = (WDialog *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (!h->modal)
+        dialog_switch_next ();
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wdialog_cmd_switch_prev (const gchar * event_group_name, const gchar * event_name,
+                            gpointer init_data, gpointer data)
+{
+    WDialog *h = (WDialog *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (!h->modal)
+        dialog_switch_prev ();
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+
+static void
+mc_wdialog_init_events (GError ** error)
+{
+    /* *INDENT-OFF* */
+    event_init_t events[] =
+    {
+        {MC_WDIALOG_EVENT_GROUP, "ok", mc_wdialog_cmd_ok, NULL},
+        {MC_WDIALOG_EVENT_GROUP, "cancel", mc_wdialog_cmd_cancel, NULL},
+        {MC_WDIALOG_EVENT_GROUP, "up", mc_wdialog_cmd_up, NULL},
+        {MC_WDIALOG_EVENT_GROUP, "down", mc_wdialog_cmd_down, NULL},
+        {MC_WDIALOG_EVENT_GROUP, "help", mc_wdialog_cmd_help, NULL},
+        {MC_WDIALOG_EVENT_GROUP, "suspend", mc_wdialog_cmd_suspend, NULL},
+        {MC_WDIALOG_EVENT_GROUP, "refresh", mc_wdialog_cmd_refresh, NULL},
+        {MC_WDIALOG_EVENT_GROUP, "show_list", mc_wdialog_cmd_show_list, NULL},
+        {MC_WDIALOG_EVENT_GROUP, "switch_next", mc_wdialog_cmd_switch_next, NULL},
+        {MC_WDIALOG_EVENT_GROUP, "switch_prev", mc_wdialog_cmd_switch_prev, NULL},
+
+        {NULL, NULL, NULL, NULL}
+    };
+    /* *INDENT-ON* */
+
+    mc_event_mass_add (events, error);
+}
+
+/* --------------------------------------------------------------------------------------------- */
+
+static void
+mc_wdialog_bind_events_to_keymap (GError ** error)
+{
+    /* *INDENT-OFF* */
+    mc_keymap_event_init_t keymap_events[] =
+    {
+        {MC_WDIALOG_KEYMAP_GROUP, "Ok", MC_WDIALOG_EVENT_GROUP, "ok"},
+        {MC_WDIALOG_KEYMAP_GROUP, "Cancel", MC_WDIALOG_EVENT_GROUP, "cancel"},
+
+        {MC_WDIALOG_KEYMAP_GROUP, "Up", MC_WDIALOG_EVENT_GROUP, "up"},
+        {MC_WDIALOG_KEYMAP_GROUP, "Left", MC_WDIALOG_EVENT_GROUP, "up"},
+
+        {MC_WDIALOG_KEYMAP_GROUP, "Down", MC_WDIALOG_EVENT_GROUP, "down"},
+        {MC_WDIALOG_KEYMAP_GROUP, "Right", MC_WDIALOG_EVENT_GROUP, "down"},
+
+        {MC_WDIALOG_KEYMAP_GROUP, "Help", MC_WDIALOG_EVENT_GROUP, "help"},
+        {MC_WDIALOG_KEYMAP_GROUP, "Suspend", MC_WDIALOG_EVENT_GROUP, "suspend"},
+        {MC_WDIALOG_KEYMAP_GROUP, "Refresh", MC_WDIALOG_EVENT_GROUP, "refresh"},
+        {MC_WDIALOG_KEYMAP_GROUP, "ScreenList", MC_WDIALOG_EVENT_GROUP, "show_list"},
+        {MC_WDIALOG_KEYMAP_GROUP, "ScreenNext", MC_WDIALOG_EVENT_GROUP, "switch_next"},
+        {MC_WDIALOG_KEYMAP_GROUP, "ScreenPrev", MC_WDIALOG_EVENT_GROUP, "switch_prev"},
+
+        {NULL, NULL, NULL, NULL}
+    };
+    /* *INDENT-ON* */
+
+    mc_keymap_mass_bind_event (keymap_events, error);
+}
+
+/* --------------------------------------------------------------------------------------------- */
 /*** public functions ****************************************************************************/
 /* --------------------------------------------------------------------------------------------- */
 
+void
+mc_wdialog_set_default_colors (void)
+{
+    dialog_colors[DLG_COLOR_NORMAL] = COLOR_NORMAL;
+    dialog_colors[DLG_COLOR_FOCUS] = COLOR_FOCUS;
+    dialog_colors[DLG_COLOR_HOT_NORMAL] = COLOR_HOT_NORMAL;
+    dialog_colors[DLG_COLOR_HOT_FOCUS] = COLOR_HOT_FOCUS;
+    dialog_colors[DLG_COLOR_TITLE] = COLOR_TITLE;
+
+    alarm_colors[DLG_COLOR_NORMAL] = ERROR_COLOR;
+    alarm_colors[DLG_COLOR_FOCUS] = ERROR_FOCUS;
+    alarm_colors[DLG_COLOR_HOT_NORMAL] = ERROR_HOT_NORMAL;
+    alarm_colors[DLG_COLOR_HOT_FOCUS] = ERROR_HOT_FOCUS;
+    alarm_colors[DLG_COLOR_TITLE] = ERROR_TITLE;
+
+    listbox_colors[DLG_COLOR_NORMAL] = PMENU_ENTRY_COLOR;
+    listbox_colors[DLG_COLOR_FOCUS] = PMENU_SELECTED_COLOR;
+    listbox_colors[DLG_COLOR_HOT_NORMAL] = PMENU_ENTRY_COLOR;
+    listbox_colors[DLG_COLOR_HOT_FOCUS] = PMENU_SELECTED_COLOR;
+    listbox_colors[DLG_COLOR_TITLE] = PMENU_TITLE_COLOR;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+
+void
+mc_wdialog_init (GError ** error)
+{
+    mc_wdialog_set_default_colors ();
+    mc_wdialog_init_events (error);
+    mc_wdialog_bind_events_to_keymap (error);
+}
+
+/* --------------------------------------------------------------------------------------------- */
 /** Clean the dialog area, draw the frame and the title */
+
 void
 dlg_default_repaint (WDialog * h)
 {
@@ -814,29 +1003,6 @@ dlg_create (gboolean modal, int y1, int x1, int lines, int cols,
 
 /* --------------------------------------------------------------------------------------------- */
 
-void
-dlg_set_default_colors (void)
-{
-    dialog_colors[DLG_COLOR_NORMAL] = COLOR_NORMAL;
-    dialog_colors[DLG_COLOR_FOCUS] = COLOR_FOCUS;
-    dialog_colors[DLG_COLOR_HOT_NORMAL] = COLOR_HOT_NORMAL;
-    dialog_colors[DLG_COLOR_HOT_FOCUS] = COLOR_HOT_FOCUS;
-    dialog_colors[DLG_COLOR_TITLE] = COLOR_TITLE;
-
-    alarm_colors[DLG_COLOR_NORMAL] = ERROR_COLOR;
-    alarm_colors[DLG_COLOR_FOCUS] = ERROR_FOCUS;
-    alarm_colors[DLG_COLOR_HOT_NORMAL] = ERROR_HOT_NORMAL;
-    alarm_colors[DLG_COLOR_HOT_FOCUS] = ERROR_HOT_FOCUS;
-    alarm_colors[DLG_COLOR_TITLE] = ERROR_TITLE;
-
-    listbox_colors[DLG_COLOR_NORMAL] = PMENU_ENTRY_COLOR;
-    listbox_colors[DLG_COLOR_FOCUS] = PMENU_SELECTED_COLOR;
-    listbox_colors[DLG_COLOR_HOT_NORMAL] = PMENU_ENTRY_COLOR;
-    listbox_colors[DLG_COLOR_HOT_FOCUS] = PMENU_SELECTED_COLOR;
-    listbox_colors[DLG_COLOR_TITLE] = PMENU_TITLE_COLOR;
-}
-
-/* --------------------------------------------------------------------------------------------- */
 
 void
 dlg_erase (WDialog * h)
@@ -1223,8 +1389,8 @@ dlg_process_event (WDialog * h, int key, Gpm_Event * event)
     if (key == EV_NONE)
     {
         if (tty_got_interrupt ())
-            if (send_message (h, NULL, MSG_ACTION, CK_Cancel, NULL) != MSG_HANDLED)
-                dlg_execute_cmd (h, CK_Cancel);
+            if (send_message (h, NULL, MSG_CANCEL, 0, NULL) != MSG_HANDLED)
+                mc_wdialog_cmd_cancel (NULL, NULL, NULL, h);
 
         return;
     }

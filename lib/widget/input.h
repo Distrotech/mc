@@ -6,7 +6,7 @@
 #ifndef MC__WIDGET_INPUT_H
 #define MC__WIDGET_INPUT_H
 
-#include "lib/keybind.h"        /* global_keymap_t */
+#include "lib/keymap.h"
 
 /*** typedefs(not structures) and defined constants **********************************************/
 
@@ -14,6 +14,9 @@
 
 /* For history load-save functions */
 #define INPUT_LAST_TEXT ((char *) 2)
+
+#define MC_WINPUT_EVENT_GROUP "widgets:input"
+#define MC_WINPUT_KEYMAP_GROUP "input"
 
 /*** enums ***************************************************************************************/
 
@@ -50,6 +53,8 @@ typedef struct
     int point;                  /* cursor position in the input line in characters */
     int mark;                   /* the mark position in characters */
     gboolean highlight;         /* there is a selected block */
+    gboolean is_highlight_cmd;  /* there is a selected block command called */
+    gboolean is_complete_cmd;   /* there is a complete command called */
     int term_first_shown;       /* column of the first shown character */
     size_t current_max_size;    /* maximum length of input line (bytes) */
     gboolean first;             /* is first keystroke? */
@@ -75,10 +80,6 @@ typedef struct
 
 /*** global variables defined in .c file *********************************************************/
 
-extern int quote;
-
-extern const global_keymap_t *input_map;
-
 /* Color styles for normal and command line input widgets */
 extern input_colors_t input_colors;
 
@@ -89,9 +90,10 @@ WInput *input_new (int y, int x, const int *colors,
                    input_complete_t completion_flags);
 /* callbac is public; needed for command line */
 cb_ret_t input_callback (Widget * w, Widget * sender, widget_msg_t msg, int parm, void *data);
-void input_set_default_colors (void);
+void mc_winput_init (GError ** error);
+void mc_winput_set_default_colors (void);
 cb_ret_t input_handle_char (WInput * in, int key);
-int input_key_is_in_map (WInput * in, int key);
+int input_key_is_in_map (int key);
 void input_assign_text (WInput * in, const char *text);
 void input_insert (WInput * in, const char *text, gboolean insert_extra_space);
 void input_set_point (WInput * in, int pos);

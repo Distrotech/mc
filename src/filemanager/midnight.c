@@ -1494,7 +1494,7 @@ midnight_callback (Widget * w, Widget * sender, widget_msg_t msg, int parm, void
         }
 
         if ((!mc_global.tty.alternate_plus_minus
-             || !(mc_global.tty.console_flag != '\0' || mc_global.tty.xterm_flag)) && !quote
+             || !(mc_global.tty.console_flag != '\0' || mc_global.tty.xterm_flag))
             && !current_panel->searching)
         {
             if (!only_leading_plus_minus)

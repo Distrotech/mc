@@ -267,7 +267,6 @@ main (int argc, char *argv[])
     {
         error = g_error_new (MC_ERROR, 0, "%s: %s", _("Home directory path is not absolute"),
                              mc_config_get_home_dir ());
-        mc_event_deinit (NULL);
         goto startup_exit_falure;
     }
 
@@ -280,12 +279,19 @@ main (int argc, char *argv[])
     if (!events_init (&error))
         goto startup_exit_falure;
 
+    if (!mc_keymap_init (&error))
+    {
+        (void) mc_event_deinit (NULL);
+        goto startup_exit_falure;
+    }
+
     mc_config_init_config_paths (&error);
     if (error == NULL)
         config_migrated = mc_config_migrate_from_old_place (&error, &config_migrate_msg);
     if (error != NULL)
     {
-        mc_event_deinit (NULL);
+        (void) mc_keymap_deinit (&error);
+        (void) mc_event_deinit (NULL);
         goto startup_exit_falure;
     }
 
@@ -321,7 +327,8 @@ main (int argc, char *argv[])
         vfs_shut ();
         done_setup ();
         g_free (saved_other_dir);
-        mc_event_deinit (NULL);
+        (void) mc_event_deinit (NULL);
+        (void) mc_keymap_deinit (NULL);
         goto startup_exit_falure;
     }
 
@@ -371,9 +378,7 @@ main (int argc, char *argv[])
     tty_init_colors (mc_global.tty.disable_colors, mc_args__force_colors);
 
     mc_skin_init (NULL, &error);
-    dlg_set_default_colors ();
-    input_set_default_colors ();
-    if (mc_global.mc_run_mode == MC_RUN_FULL)
+    mc_widgets_init (&error) if (mc_global.mc_run_mode == MC_RUN_FULL)
         command_set_default_colors ();
     if (error != NULL)
     {
@@ -496,6 +501,8 @@ main (int argc, char *argv[])
     mc_config_deinit_config_paths ();
 
     (void) mc_event_deinit (&error);
+    (void) mc_keymap_deinit (&error);
+
     if (error != NULL)
     {
         fprintf (stderr, _("\nFailed while close:\n%s\n"), error->message);

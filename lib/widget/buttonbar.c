@@ -45,7 +45,7 @@
 #include "lib/skin.h"
 #include "lib/strutil.h"
 #include "lib/util.h"
-#include "lib/keybind.h"        /* global_keymap_t */
+#include "lib/keymap.h"
 #include "lib/widget.h"
 
 /*** global variables ****************************************************************************/
@@ -142,16 +142,30 @@ set_label_text (WButtonBar * bb, int idx, const char *text)
 
 /* --------------------------------------------------------------------------------------------- */
 
-/* returns TRUE if a function has been called, FALSE otherwise. */
-static gboolean
-buttonbar_call (WButtonBar * bb, int i)
+static void *
+buttonbar_get_label_data (WButtonBar * bb, int parm)
 {
-    cb_ret_t ret = MSG_NOT_HANDLED;
-    Widget *w = WIDGET (bb);
+    int i;
+    for (i = 0; i < BUTTONBAR_LABELS_NUM; i++)
+        if (parm == KEY_F (i + 1))
+            return bb->labels[i].receiver;
+    return NULL;
+}
 
-    if ((bb != NULL) && (bb->labels[i].command != CK_IgnoreKey))
-        ret = send_message (w->owner, w, MSG_ACTION, bb->labels[i].command, bb->labels[i].receiver);
-    return ret;
+/* --------------------------------------------------------------------------------------------- */
+
+static cb_ret_t
+buttonbar_handle_hotkey (WButtonBar * bb, int parm)
+{
+    Widget *w = WIDGET (bb);
+    cb_ret_t ret_value = MSG_HANDLED;
+    void *label_data;
+
+    label_data = buttonbar_get_label_data (bb, parm);
+    if (!mc_keymap_process_group (bb->keymap_name, parm, label_data, NULL))
+        ret_value = send_message (w->owner, w, MSG_HOTKEY, parm, label_data);
+
+    return ret_value;
 }
 
 /* --------------------------------------------------------------------------------------------- */
@@ -168,10 +182,7 @@ buttonbar_callback (Widget * w, Widget * sender, widget_msg_t msg, int parm, voi
         return MSG_NOT_HANDLED;
 
     case MSG_HOTKEY:
-        for (i = 0; i < BUTTONBAR_LABELS_NUM; i++)
-            if (parm == KEY_F (i + 1) && buttonbar_call (bb, i))
-                return MSG_HANDLED;
-        return MSG_NOT_HANDLED;
+        return buttonbar_handle_hotkey (bb, parm);
 
     case MSG_DRAW:
         if (bb->visible)
@@ -230,7 +241,7 @@ buttonbar_event (Gpm_Event * event, void *data)
         local = mouse_get_local (event, w);
         button = buttonbar_get_button_by_x_coord (bb, local.x - 1);
         if (button >= 0)
-            buttonbar_call (bb, button);
+            buttonbar_handle_hotkey (bb, KEY_F (button));
     }
 
     return MOU_NORMAL;
@@ -241,7 +252,7 @@ buttonbar_event (Gpm_Event * event, void *data)
 /* --------------------------------------------------------------------------------------------- */
 
 WButtonBar *
-buttonbar_new (gboolean visible)
+buttonbar_new (gboolean visible, const char *keymap_name)
 {
     WButtonBar *bb;
     Widget *w;
@@ -252,6 +263,7 @@ buttonbar_new (gboolean visible)
 
     w->pos_flags = WPOS_KEEP_HORZ | WPOS_KEEP_BOTTOM;
     bb->visible = visible;
+    bb->keymap_name = keymap_name;
     widget_want_hotkey (w, TRUE);
     widget_want_cursor (w, FALSE);
 
@@ -261,22 +273,15 @@ buttonbar_new (gboolean visible)
 /* --------------------------------------------------------------------------------------------- */
 
 void
-buttonbar_set_label (WButtonBar * bb, int idx, const char *text,
-                     const struct global_keymap_t *keymap, const Widget * receiver)
+buttonbar_set_label (WButtonBar * bb, int idx, const char *text, const Widget * receiver)
 {
     if ((bb != NULL) && (idx >= 1) && (idx <= BUTTONBAR_LABELS_NUM))
     {
-        unsigned long command = CK_IgnoreKey;
-
-        if (keymap != NULL)
-            command = keybind_lookup_keymap_command (keymap, KEY_F (idx));
-
         if ((text == NULL) || (text[0] == '\0'))
             set_label_text (bb, idx, "");
         else
             set_label_text (bb, idx, text);
 
-        bb->labels[idx - 1].command = command;
         bb->labels[idx - 1].receiver = WIDGET (receiver);
     }
 }

@@ -1070,7 +1070,7 @@ query_callback (Widget * w, Widget * sender, widget_msg_t msg, int parm, void *d
             if (parm < 32 || parm > 255)
             {
                 bl = 0;
-                if (input_key_is_in_map (input, parm) != 2)
+                if (input_key_is_in_map (parm) != 2)
                     return MSG_NOT_HANDLED;
 
                 if (end == min_end)

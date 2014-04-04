@@ -38,17 +38,16 @@
 
 #include "lib/global.h"
 
-#include "lib/tty/tty.h"
+#include "lib/event.h"
+#include "lib/keymap.h"
 #include "lib/tty/mouse.h"
 #include "lib/skin.h"
 #include "lib/strutil.h"
+#include "lib/tty/tty.h"
 #include "lib/util.h"           /* Q_() */
-#include "lib/keybind.h"        /* global_keymap_t */
 #include "lib/widget.h"
 
 /*** global variables ****************************************************************************/
-
-const global_keymap_t *listbox_map = NULL;
 
 /*** file scope macro definitions ****************************************************************/
 
@@ -230,103 +229,9 @@ listbox_select_pos (WListbox * l, int base, int pos)
 
 /* --------------------------------------------------------------------------------------------- */
 
-static void
-listbox_fwd (WListbox * l)
+static gboolean
+listbox_select_items_by_numeric_keys (WListbox * l, int key)
 {
-    if ((guint) l->pos + 1 >= g_queue_get_length (l->list))
-        listbox_select_first (l);
-    else
-        listbox_select_entry (l, l->pos + 1);
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-listbox_back (WListbox * l)
-{
-    if (l->pos <= 0)
-        listbox_select_last (l);
-    else
-        listbox_select_entry (l, l->pos - 1);
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static cb_ret_t
-listbox_execute_cmd (WListbox * l, unsigned long command)
-{
-    cb_ret_t ret = MSG_HANDLED;
-    int i;
-    Widget *w = WIDGET (l);
-    int length;
-
-    if (l->list == NULL || g_queue_is_empty (l->list))
-        return MSG_NOT_HANDLED;
-
-    switch (command)
-    {
-    case CK_Up:
-        listbox_back (l);
-        break;
-    case CK_Down:
-        listbox_fwd (l);
-        break;
-    case CK_Top:
-        listbox_select_first (l);
-        break;
-    case CK_Bottom:
-        listbox_select_last (l);
-        break;
-    case CK_PageUp:
-        for (i = 0; (i < w->lines - 1) && (l->pos > 0); i++)
-            listbox_back (l);
-        break;
-    case CK_PageDown:
-        length = g_queue_get_length (l->list);
-        for (i = 0; i < w->lines - 1 && l->pos < length - 1; i++)
-            listbox_fwd (l);
-        break;
-    case CK_Delete:
-        if (l->deletable)
-        {
-            gboolean is_last, is_more;
-
-            length = g_queue_get_length (l->list);
-
-            is_last = (l->pos + 1 >= length);
-            is_more = (l->top + w->lines >= length);
-
-            listbox_remove_current (l);
-            if ((l->top > 0) && (is_last || is_more))
-                l->top--;
-        }
-        break;
-    case CK_Clear:
-        if (l->deletable && mc_global.widget.confirm_history_cleanup
-            /* TRANSLATORS: no need to translate 'DialogTitle', it's just a context prefix */
-            && (query_dialog (Q_ ("DialogTitle|History cleanup"),
-                              _("Do you want clean this history?"),
-                              D_ERROR, 2, _("&Yes"), _("&No")) == 0))
-            listbox_remove_list (l);
-        break;
-    default:
-        ret = MSG_NOT_HANDLED;
-    }
-
-    return ret;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-/* Return MSG_HANDLED if we want a redraw */
-static cb_ret_t
-listbox_key (WListbox * l, int key)
-{
-    unsigned long command;
-
-    if (l->list == NULL)
-        return MSG_NOT_HANDLED;
-
     /* focus on listbox item N by '0'..'9' keys */
     if (key >= '0' && key <= '9')
     {
@@ -337,13 +242,34 @@ listbox_key (WListbox * l, int key)
         if (abs (oldpos - l->pos) > WIDGET (l)->lines)
             l->top = l->pos;
 
-        return MSG_HANDLED;
+        return TRUE;
     }
+    return FALSE;
+}
 
-    command = keybind_lookup_keymap_command (listbox_map, key);
-    if (command == CK_IgnoreKey)
-        return MSG_NOT_HANDLED;
-    return listbox_execute_cmd (l, command);
+/* --------------------------------------------------------------------------------------------- */
+
+/* Return MSG_HANDLED if we want a redraw */
+static cb_ret_t
+listbox_handle_keys (WListbox * l, int key)
+{
+    cb_ret_t ret_value = MSG_NOT_HANDLED;
+
+    if (l->list != NULL)
+    {
+        if (listbox_select_items_by_numeric_keys (l, key))
+            ret_value = MSG_HANDLED;
+        else if (mc_keymap_process_group (MC_WLISTBOX_KEYMAP_GROUP, key, l, NULL))
+        {
+            WDialog *h = ((Widget *) l)->owner;
+
+            listbox_draw (l, TRUE);
+            // TODO: MSG_ACTION SHOULD BE REMOVED!!!
+            send_message (h, (Widget *) l, MSG_ACTION, l->pos, NULL);
+            ret_value = MSG_HANDLED;
+        }
+    }
+    return ret_value;
 }
 
 /* --------------------------------------------------------------------------------------------- */
@@ -396,7 +322,6 @@ listbox_callback (Widget * w, Widget * sender, widget_msg_t msg, int parm, void 
 {
     WListbox *l = LISTBOX (w);
     WDialog *h = w->owner;
-    cb_ret_t ret_code;
 
     switch (msg)
     {
@@ -429,16 +354,7 @@ listbox_callback (Widget * w, Widget * sender, widget_msg_t msg, int parm, void 
         }
 
     case MSG_KEY:
-        ret_code = listbox_key (l, parm);
-        if (ret_code != MSG_NOT_HANDLED)
-        {
-            listbox_draw (l, TRUE);
-            send_message (h, w, MSG_ACTION, l->pos, NULL);
-        }
-        return ret_code;
-
-    case MSG_ACTION:
-        return listbox_execute_cmd (l, parm);
+        return listbox_handle_keys (l, parm);
 
     case MSG_CURSOR:
         widget_move (l, l->cursor_y, 0);
@@ -461,6 +377,276 @@ listbox_callback (Widget * w, Widget * sender, widget_msg_t msg, int parm, void 
     default:
         return widget_default_callback (w, sender, msg, parm, data);
     }
+}
+
+/* --------------------------------------------------------------------------------------------- */
+
+static gboolean
+mc_wlistbox_need_to_skip_cmd (WListbox * l)
+{
+    return (l->list == NULL || g_queue_is_empty (l->list));
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+/**
+ * Selects the first entry and scrolls the list to the top.
+ */
+
+static gboolean
+mc_wlistbox_cmd_top (const gchar * event_group_name, const gchar * event_name,
+                     gpointer init_data, gpointer data)
+{
+    WListbox *l = (WListbox *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (mc_wlistbox_need_to_skip_cmd (l))
+        return TRUE;
+
+    l->pos = l->top = 0;
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+/**
+ * Selects the last entry and scrolls the list to the bottom.
+ */
+
+static gboolean
+mc_wlistbox_cmd_bottom (const gchar * event_group_name, const gchar * event_name,
+                        gpointer init_data, gpointer data)
+{
+    WListbox *l = (WListbox *) data;
+    int lines = WIDGET (l)->lines;
+    int length = 0;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (mc_wlistbox_need_to_skip_cmd (l))
+        return TRUE;
+
+    if (!listbox_is_empty (l))
+        length = g_queue_get_length (l->list);
+
+    l->pos = length > 0 ? length - 1 : 0;
+    l->top = length > lines ? length - lines : 0;
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wlistbox_cmd_back (const gchar * event_group_name, const gchar * event_name,
+                      gpointer init_data, gpointer data)
+{
+    WListbox *l = (WListbox *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (mc_wlistbox_need_to_skip_cmd (l))
+        return TRUE;
+
+    if (l->pos <= 0)
+        mc_wlistbox_cmd_bottom (NULL, NULL, NULL, l);
+    else
+        listbox_select_entry (l, l->pos - 1);
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wlistbox_cmd_forward (const gchar * event_group_name, const gchar * event_name,
+                         gpointer init_data, gpointer data)
+{
+    WListbox *l = (WListbox *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (mc_wlistbox_need_to_skip_cmd (l))
+        return TRUE;
+
+    if ((guint) l->pos + 1 >= g_queue_get_length (l->list))
+        mc_wlistbox_cmd_top (NULL, NULL, NULL, l);
+    else
+        listbox_select_entry (l, l->pos + 1);
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wlistbox_cmd_page_up (const gchar * event_group_name, const gchar * event_name,
+                         gpointer init_data, gpointer data)
+{
+    WListbox *l = (WListbox *) data;
+    Widget *w = (Widget *) l;
+    int i;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (mc_wlistbox_need_to_skip_cmd (l))
+        return TRUE;
+
+    for (i = 0; (i < w->lines - 1) && (l->pos > 0); i++)
+        mc_wlistbox_cmd_back (NULL, NULL, NULL, l);
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wlistbox_cmd_page_down (const gchar * event_group_name, const gchar * event_name,
+                           gpointer init_data, gpointer data)
+{
+    WListbox *l = (WListbox *) data;
+    Widget *w = (Widget *) l;
+    int i, length;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (mc_wlistbox_need_to_skip_cmd (l))
+        return TRUE;
+
+    length = g_queue_get_length (l->list);
+    for (i = 0; i < w->lines - 1 && l->pos < length - 1; i++)
+        mc_wlistbox_cmd_forward (NULL, NULL, NULL, l);
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wlistbox_cmd_delete (const gchar * event_group_name, const gchar * event_name,
+                        gpointer init_data, gpointer data)
+{
+    WListbox *l = (WListbox *) data;
+    Widget *w = (Widget *) l;
+    int length;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (mc_wlistbox_need_to_skip_cmd (l))
+        return TRUE;
+
+    if (l->deletable)
+    {
+        gboolean is_last, is_more;
+
+        length = g_queue_get_length (l->list);
+
+        is_last = (l->pos + 1 >= length);
+        is_more = (l->top + w->lines >= length);
+
+        listbox_remove_current (l);
+        if ((l->top > 0) && (is_last || is_more))
+            l->top--;
+    }
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_wlistbox_cmd_clear (const gchar * event_group_name, const gchar * event_name,
+                       gpointer init_data, gpointer data)
+{
+    WListbox *l = (WListbox *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (mc_wlistbox_need_to_skip_cmd (l))
+        return TRUE;
+
+
+    if (!l->deletable || !mc_global.widget.confirm_history_cleanup)
+        return TRUE;
+
+    /* TRANSLATORS: no need to translate 'DialogTitle', it's just a context prefix */
+    if (query_dialog (Q_ ("DialogTitle|History cleanup"),
+                      _("Do you want clean this history?"), D_ERROR, 2, _("&Yes"), _("&No")) == 0)
+        listbox_remove_list (l);
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+
+static void
+mc_wlistbox_init_events (GError ** error)
+{
+    /* *INDENT-OFF* */
+    event_init_t events[] =
+    {
+        {MC_WLISTBOX_EVENT_GROUP, "go_back", mc_wlistbox_cmd_back, NULL},
+        {MC_WLISTBOX_EVENT_GROUP, "go_forward", mc_wlistbox_cmd_forward, NULL},
+        {MC_WLISTBOX_EVENT_GROUP, "go_top", mc_wlistbox_cmd_top, NULL},
+        {MC_WLISTBOX_EVENT_GROUP, "go_bottom", mc_wlistbox_cmd_bottom, NULL},
+        {MC_WLISTBOX_EVENT_GROUP, "go_page_up", mc_wlistbox_cmd_page_up, NULL},
+        {MC_WLISTBOX_EVENT_GROUP, "go_page_down", mc_wlistbox_cmd_page_down, NULL},
+        {MC_WLISTBOX_EVENT_GROUP, "delete", mc_wlistbox_cmd_delete, NULL},
+        {MC_WLISTBOX_EVENT_GROUP, "clear", mc_wlistbox_cmd_clear, NULL},
+
+        {NULL, NULL, NULL, NULL}
+    };
+    /* *INDENT-ON* */
+
+    mc_event_mass_add (events, error);
+}
+
+/* --------------------------------------------------------------------------------------------- */
+
+static void
+mc_wlistbox_bind_events_to_keymap (GError ** error)
+{
+    /* *INDENT-OFF* */
+    mc_keymap_event_init_t keymap_events[] =
+    {
+        {MC_WLISTBOX_KEYMAP_GROUP, "Up", MC_WLISTBOX_EVENT_GROUP, "go_back"},
+        {MC_WLISTBOX_KEYMAP_GROUP, "Down", MC_WLISTBOX_EVENT_GROUP, "go_forward"},
+        {MC_WLISTBOX_KEYMAP_GROUP, "Top", MC_WLISTBOX_EVENT_GROUP, "go_top"},
+        {MC_WLISTBOX_KEYMAP_GROUP, "Bottom", MC_WLISTBOX_EVENT_GROUP, "go_bottom"},
+        {MC_WLISTBOX_KEYMAP_GROUP, "PageUp", MC_WLISTBOX_EVENT_GROUP, "go_page_up"},
+        {MC_WLISTBOX_KEYMAP_GROUP, "PageDown", MC_WLISTBOX_EVENT_GROUP, "go_page_down"},
+        {MC_WLISTBOX_KEYMAP_GROUP, "Delete", MC_WLISTBOX_EVENT_GROUP, "delete"},
+        {MC_WLISTBOX_KEYMAP_GROUP, "Clear", MC_WLISTBOX_EVENT_GROUP, "clear"},
+
+        {NULL, NULL, NULL, NULL}
+    };
+    /* *INDENT-ON* */
+
+    mc_keymap_mass_bind_event (keymap_events, error);
 }
 
 /* --------------------------------------------------------------------------------------------- */
@@ -490,18 +676,18 @@ listbox_event (Gpm_Event * event, void *data)
         local = mouse_get_local (event, w);
         if (local.y < 1)
             for (i = -local.y; i >= 0; i--)
-                listbox_back (l);
+                mc_wlistbox_cmd_back (NULL, NULL, NULL, l);
         else if (local.y > w->lines)
             for (i = local.y - w->lines; i > 0; i--)
-                listbox_fwd (l);
+                mc_wlistbox_cmd_forward (NULL, NULL, NULL, l);
         else if ((local.buttons & GPM_B_UP) != 0)
         {
-            listbox_back (l);
+            mc_wlistbox_cmd_back (NULL, NULL, NULL, l);
             ret = MOU_NORMAL;
         }
         else if ((local.buttons & GPM_B_DOWN) != 0)
         {
-            listbox_fwd (l);
+            mc_wlistbox_cmd_forward (NULL, NULL, NULL, l);
             ret = MOU_NORMAL;
         }
         else
@@ -540,6 +726,15 @@ listbox_event (Gpm_Event * event, void *data)
 
 /* --------------------------------------------------------------------------------------------- */
 /*** public functions ****************************************************************************/
+/* --------------------------------------------------------------------------------------------- */
+
+void
+mc_wlistbox_init (GError ** error)
+{
+    mc_wlistbox_init_events (error);
+    mc_wlistbox_bind_events_to_keymap (error);
+}
+
 /* --------------------------------------------------------------------------------------------- */
 
 WListbox *
@@ -587,31 +782,6 @@ listbox_search_text (WListbox * l, const char *text)
     }
 
     return (-1);
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-/* Selects the first entry and scrolls the list to the top */
-void
-listbox_select_first (WListbox * l)
-{
-    l->pos = l->top = 0;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-/* Selects the last entry and scrolls the list to the bottom */
-void
-listbox_select_last (WListbox * l)
-{
-    int lines = WIDGET (l)->lines;
-    int length = 0;
-
-    if (!listbox_is_empty (l))
-        length = g_queue_get_length (l->list);
-
-    l->pos = length > 0 ? length - 1 : 0;
-    l->top = length > lines ? length - lines : 0;
 }
 
 /* --------------------------------------------------------------------------------------------- */

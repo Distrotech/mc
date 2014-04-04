@@ -13,7 +13,7 @@
 
 #include "lib/global.h"
 #include "lib/hook.h"           /* hook_t */
-#include "lib/keybind.h"        /* global_keymap_t */
+#include "lib/keymap.h"
 #include "lib/tty/mouse.h"      /* mouse_h */
 
 /*** typedefs(not structures) and defined constants **********************************************/
@@ -26,6 +26,10 @@
 #define B_ENTER         2
 #define B_HELP          3
 #define B_USER          100
+
+#define MC_WDIALOG_EVENT_GROUP "widgets:dialog"
+#define MC_WDIALOG_KEYMAP_GROUP "dialog"
+
 
 /*** enums ***************************************************************************************/
 
@@ -63,15 +67,12 @@ typedef enum
 
 /* get string representation of shortcut assigned  with command */
 /* as menu is a widget of dialog, ask dialog about shortcut string */
-typedef char *(*dlg_shortcut_str) (unsigned long command);
+typedef char *(*dlg_shortcut_str) (const char *event_group, const char *event_name);
 
 /* get dialog name to show in dialog list */
 typedef char *(*dlg_title_str) (const WDialog * h, size_t len);
 
 typedef int dlg_colors_t[DLG_COLOR_COUNT];
-
-/* menu command execution */
-typedef cb_ret_t (*menu_exec_fn) (int command);
 
 /*** structures declarations (and typedefs of structures)*****************************************/
 
@@ -121,8 +122,6 @@ extern hook_t *idle_hook;
 extern int fast_refresh;
 extern int mouse_close_dialog;
 
-extern const global_keymap_t *dialog_map;
-
 /*** declarations of public functions ************************************************************/
 
 /* Creates a dialog head  */
@@ -130,7 +129,8 @@ WDialog *dlg_create (gboolean modal, int y1, int x1, int lines, int cols,
                      const int *colors, widget_cb_fn callback, mouse_h mouse_handler,
                      const char *help_ctx, const char *title, dlg_flags_t flags);
 
-void dlg_set_default_colors (void);
+void mc_wdialog_init (GError ** error);
+void mc_wdialog_set_default_colors (void);
 
 unsigned long add_widget_autopos (WDialog * dest, void *w, widget_pos_flags_t pos_flags,
                                   const void *before);

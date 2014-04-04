@@ -6,12 +6,15 @@
 #ifndef MC__WIDGET_LISTBOX_H
 #define MC__WIDGET_LISTBOX_H
 
-#include "lib/keybind.h"        /* global_keymap_t */
+#include "lib/keymap.h"
 
 /*** typedefs(not structures) and defined constants **********************************************/
 
 #define LISTBOX(x) ((WListbox *)(x))
 #define LENTRY(x) ((WLEntry *)(x))
+
+#define MC_WLISTBOX_EVENT_GROUP "widgets:listbox"
+#define MC_WLISTBOX_KEYMAP_GROUP "listbox"
 
 /*** enums ***************************************************************************************/
 
@@ -57,14 +60,11 @@ typedef struct WListbox
 
 /*** global variables defined in .c file *********************************************************/
 
-extern const global_keymap_t *listbox_map;
-
 /*** declarations of public functions ************************************************************/
 
+void mc_wlistbox_init (GError ** error);
 WListbox *listbox_new (int y, int x, int height, int width, gboolean deletable, lcback_fn callback);
 int listbox_search_text (WListbox * l, const char *text);
-void listbox_select_first (WListbox * l);
-void listbox_select_last (WListbox * l);
 void listbox_select_entry (WListbox * l, int dest);
 void listbox_get_current (WListbox * l, char **string, void **extra);
 WLEntry *listbox_get_nth_item (const WListbox * l, int pos);

@@ -40,6 +40,7 @@ typedef enum
     MSG_IDLE,                   /* The idle state is active */
     MSG_RESIZE,                 /* Screen size has changed */
     MSG_VALIDATE,               /* Dialog is to be closed */
+    MSG_CANCEL,                 /* Cancel last action */
     MSG_END,                    /* Shut down dialog */
     MSG_DESTROY                 /* Sent to widget at destruction time */
 } widget_msg_t;
@@ -121,6 +122,9 @@ typedef struct hotkey_t
 /*** global variables defined in .c file *********************************************************/
 
 /*** declarations of public functions ************************************************************/
+
+void mc_widgets_init (GError ** error);
+void mc_widgets_set_default_colors (void);
 
 /* create hotkey from text */
 hotkey_t parse_hotkey (const char *text);

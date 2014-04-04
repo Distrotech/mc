@@ -243,6 +243,7 @@ static const global_keymap_ini_t default_input_keymap[] = {
     {"Delete", "delete; ctrl-d"},
     {"DeleteToWordEnd", "alt-d"},
     {"DeleteToWordBegin", "alt-backspace"},
+    {"EnterCtrlSeq", "ctrl-q"},
     /* Region manipulation */
     {"Remove", "ctrl-w"},
     {"Store", "alt-w"},

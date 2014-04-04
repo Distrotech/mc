@@ -48,17 +48,13 @@
 #include "lib/skin.h"
 #include "lib/strutil.h"
 #include "lib/util.h"
-#include "lib/keybind.h"        /* global_keymap_t */
+#include "lib/keymap.h"
 #include "lib/widget.h"
 #include "lib/event.h"          /* mc_event_raise() */
 
 #include "input_complete.h"
 
 /*** global variables ****************************************************************************/
-
-int quote = 0;
-
-const global_keymap_t *input_map = NULL;
 
 /* Color styles for input widgets */
 input_colors_t input_colors;
@@ -185,29 +181,6 @@ delete_region (WInput * in, int x_first, int x_last)
     memmove (&in->buffer[first], &in->buffer[last], len);
     in->charpoint = 0;
     in->need_push = TRUE;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-do_show_hist (WInput * in)
-{
-    size_t len;
-    char *r;
-
-    len = get_history_length (in->history.list);
-
-    r = history_show (&in->history.list, WIDGET (in),
-                      g_list_position (in->history.list, in->history.list));
-    if (r != NULL)
-    {
-        input_assign_text (in, r);
-        g_free (r);
-    }
-
-    /* Has history cleaned up or not? */
-    if (len != get_history_length (in->history.list))
-        in->history.changed = TRUE;
 }
 
 /* --------------------------------------------------------------------------------------------- */
@@ -377,119 +350,6 @@ insert_char (WInput * in, int c_code)
 /* --------------------------------------------------------------------------------------------- */
 
 static void
-beginning_of_line (WInput * in)
-{
-    in->point = 0;
-    in->charpoint = 0;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-end_of_line (WInput * in)
-{
-    in->point = str_length (in->buffer);
-    in->charpoint = 0;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-backward_char (WInput * in)
-{
-    const char *act;
-
-    act = in->buffer + str_offset_to_pos (in->buffer, in->point);
-    if (in->point > 0)
-        in->point -= str_cprev_noncomb_char (&act, in->buffer);
-    in->charpoint = 0;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-forward_char (WInput * in)
-{
-    const char *act;
-
-    act = in->buffer + str_offset_to_pos (in->buffer, in->point);
-    if (act[0] != '\0')
-        in->point += str_cnext_noncomb_char (&act);
-    in->charpoint = 0;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-forward_word (WInput * in)
-{
-    const char *p;
-
-    p = in->buffer + str_offset_to_pos (in->buffer, in->point);
-    while (p[0] != '\0' && (str_isspace (p) || str_ispunct (p)))
-    {
-        str_cnext_char (&p);
-        in->point++;
-    }
-    while (p[0] != '\0' && !str_isspace (p) && !str_ispunct (p))
-    {
-        str_cnext_char (&p);
-        in->point++;
-    }
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-backward_word (WInput * in)
-{
-    const char *p, *p_tmp;
-
-    for (p = in->buffer + str_offset_to_pos (in->buffer, in->point);
-         (p != in->buffer) && (p[0] == '\0'); str_cprev_char (&p), in->point--);
-
-    while (p != in->buffer)
-    {
-        p_tmp = p;
-        str_cprev_char (&p);
-        if (!str_isspace (p) && !str_ispunct (p))
-        {
-            p = p_tmp;
-            break;
-        }
-        in->point--;
-    }
-    while (p != in->buffer)
-    {
-        str_cprev_char (&p);
-        if (str_isspace (p) || str_ispunct (p))
-            break;
-
-        in->point--;
-    }
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-backward_delete (WInput * in)
-{
-    const char *act = in->buffer + str_offset_to_pos (in->buffer, in->point);
-    int start;
-
-    if (in->point == 0)
-        return;
-
-    start = in->point - str_cprev_noncomb_char (&act, in->buffer);
-    move_buffer_backward (in, start, in->point);
-    in->charpoint = 0;
-    in->need_push = TRUE;
-    in->point = start;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
 delete_char (WInput * in)
 {
     const char *act;
@@ -506,328 +366,12 @@ delete_char (WInput * in)
 /* --------------------------------------------------------------------------------------------- */
 
 static void
-copy_region (WInput * in, int x_first, int x_last)
-{
-    int first = min (x_first, x_last);
-    int last = max (x_first, x_last);
-
-    if (last == first)
-    {
-        /* Copy selected files to clipboard */
-        mc_event_raise (MCEVENT_GROUP_FILEMANAGER, "panel_save_current_file_to_clip_file", NULL);
-        /* try use external clipboard utility */
-        mc_event_raise (MCEVENT_GROUP_CORE, "clipboard_file_to_ext_clip", NULL);
-        return;
-    }
-
-    g_free (kill_buffer);
-
-    first = str_offset_to_pos (in->buffer, first);
-    last = str_offset_to_pos (in->buffer, last);
-
-    kill_buffer = g_strndup (in->buffer + first, last - first);
-
-    mc_event_raise (MCEVENT_GROUP_CORE, "clipboard_text_to_file", kill_buffer);
-    /* try use external clipboard utility */
-    mc_event_raise (MCEVENT_GROUP_CORE, "clipboard_file_to_ext_clip", NULL);
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-kill_word (WInput * in)
-{
-    int old_point = in->point;
-    int new_point;
-
-    forward_word (in);
-    new_point = in->point;
-    in->point = old_point;
-
-    delete_region (in, old_point, new_point);
-    in->need_push = TRUE;
-    in->charpoint = 0;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-back_kill_word (WInput * in)
-{
-    int old_point = in->point;
-    int new_point;
-
-    backward_word (in);
-    new_point = in->point;
-    in->point = old_point;
-
-    delete_region (in, old_point, new_point);
-    in->need_push = TRUE;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-yank (WInput * in)
-{
-    if (kill_buffer != NULL)
-    {
-        char *p;
-
-        in->charpoint = 0;
-        for (p = kill_buffer; *p != '\0'; p++)
-            insert_char (in, *p);
-        in->charpoint = 0;
-    }
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-kill_line (WInput * in)
-{
-    int chp;
-
-    chp = str_offset_to_pos (in->buffer, in->point);
-    g_free (kill_buffer);
-    kill_buffer = g_strdup (&in->buffer[chp]);
-    in->buffer[chp] = '\0';
-    in->charpoint = 0;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-clear_line (WInput * in)
-{
-    in->need_push = TRUE;
-    in->buffer[0] = '\0';
-    in->point = 0;
-    in->mark = 0;
-    in->highlight = FALSE;
-    in->charpoint = 0;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-ins_from_clip (WInput * in)
-{
-    char *p = NULL;
-    ev_clipboard_text_from_file_t event_data;
-
-    /* try use external clipboard utility */
-    mc_event_raise (MCEVENT_GROUP_CORE, "clipboard_file_from_ext_clip", NULL);
-
-    event_data.text = &p;
-    mc_event_raise (MCEVENT_GROUP_CORE, "clipboard_text_from_file", &event_data);
-    if (event_data.ret)
-    {
-        char *pp;
-
-        for (pp = p; *pp != '\0'; pp++)
-            insert_char (in, *pp);
-
-        g_free (p);
-    }
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-hist_prev (WInput * in)
-{
-    GList *prev;
-
-    if (in->history.list == NULL)
-        return;
-
-    if (in->need_push)
-        push_history (in, in->buffer);
-
-    prev = g_list_previous (in->history.current);
-    if (prev != NULL)
-    {
-        input_assign_text (in, (char *) prev->data);
-        in->history.current = prev;
-        in->history.changed = TRUE;
-        in->need_push = FALSE;
-    }
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
-hist_next (WInput * in)
-{
-    GList *next;
-
-    if (in->need_push)
-    {
-        push_history (in, in->buffer);
-        input_assign_text (in, "");
-        return;
-    }
-
-    if (in->history.list == NULL)
-        return;
-
-    next = g_list_next (in->history.current);
-    if (next == NULL)
-    {
-        input_assign_text (in, "");
-        in->history.current = in->history.list;
-    }
-    else
-    {
-        input_assign_text (in, (char *) next->data);
-        in->history.current = next;
-        in->history.changed = TRUE;
-        in->need_push = FALSE;
-    }
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static void
 port_region_marked_for_delete (WInput * in)
 {
     in->buffer[0] = '\0';
     in->point = 0;
     in->first = FALSE;
     in->charpoint = 0;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-static cb_ret_t
-input_execute_cmd (WInput * in, unsigned long command)
-{
-    cb_ret_t res = MSG_HANDLED;
-
-    /* a highlight command like shift-arrow */
-    if (command == CK_MarkLeft || command == CK_MarkRight ||
-        command == CK_MarkToWordBegin || command == CK_MarkToWordEnd ||
-        command == CK_MarkToHome || command == CK_MarkToEnd)
-    {
-        if (!in->highlight)
-        {
-            input_mark_cmd (in, FALSE); /* clear */
-            input_mark_cmd (in, TRUE);  /* marking on */
-        }
-    }
-
-    switch (command)
-    {
-    case CK_WordRight:
-    case CK_WordLeft:
-    case CK_Right:
-    case CK_Left:
-        if (in->highlight)
-            input_mark_cmd (in, FALSE);
-    }
-
-    switch (command)
-    {
-    case CK_Home:
-    case CK_MarkToHome:
-        beginning_of_line (in);
-        break;
-    case CK_End:
-    case CK_MarkToEnd:
-        end_of_line (in);
-        break;
-    case CK_Left:
-    case CK_MarkLeft:
-        backward_char (in);
-        break;
-    case CK_WordLeft:
-    case CK_MarkToWordBegin:
-        backward_word (in);
-        break;
-    case CK_Right:
-    case CK_MarkRight:
-        forward_char (in);
-        break;
-    case CK_WordRight:
-    case CK_MarkToWordEnd:
-        forward_word (in);
-        break;
-    case CK_BackSpace:
-        if (in->highlight)
-        {
-            long m1, m2;
-            if (input_eval_marks (in, &m1, &m2))
-                delete_region (in, m1, m2);
-        }
-        else
-            backward_delete (in);
-        break;
-    case CK_Delete:
-        if (in->first)
-            port_region_marked_for_delete (in);
-        else if (in->highlight)
-        {
-            long m1, m2;
-            if (input_eval_marks (in, &m1, &m2))
-                delete_region (in, m1, m2);
-        }
-        else
-            delete_char (in);
-        break;
-    case CK_DeleteToWordEnd:
-        kill_word (in);
-        break;
-    case CK_DeleteToWordBegin:
-        back_kill_word (in);
-        break;
-    case CK_Mark:
-        input_mark_cmd (in, TRUE);
-        break;
-    case CK_Remove:
-        delete_region (in, in->point, in->mark);
-        break;
-    case CK_DeleteToEnd:
-        kill_line (in);
-        break;
-    case CK_Clear:
-        clear_line (in);
-        break;
-    case CK_Store:
-        copy_region (in, in->mark, in->point);
-        break;
-    case CK_Cut:
-        copy_region (in, in->mark, in->point);
-        delete_region (in, in->point, in->mark);
-        break;
-    case CK_Yank:
-        yank (in);
-        break;
-    case CK_Paste:
-        ins_from_clip (in);
-        break;
-    case CK_HistoryPrev:
-        hist_prev (in);
-        break;
-    case CK_HistoryNext:
-        hist_next (in);
-        break;
-    case CK_History:
-        do_show_hist (in);
-        break;
-    case CK_Complete:
-        complete (in);
-        break;
-    default:
-        res = MSG_NOT_HANDLED;
-    }
-
-    if (command != CK_MarkLeft && command != CK_MarkRight &&
-        command != CK_MarkToWordBegin && command != CK_MarkToWordEnd &&
-        command != CK_MarkToHome && command != CK_MarkToEnd)
-        in->highlight = FALSE;
-
-    return res;
 }
 
 /* --------------------------------------------------------------------------------------------- */
@@ -937,7 +481,7 @@ input_event (Gpm_Event * event, void *data)
         dlg_select_widget (w);
 
         if (local.x >= w->cols - HISTORY_BUTTON_WIDTH + 1 && should_show_history_button (in))
-            do_show_hist (in);
+            mc_event_raise (MC_WINPUT_EVENT_GROUP, "history_show", in);
         else
         {
             in->point = str_length (in->buffer);
@@ -978,7 +522,831 @@ input_set_options_callback (Widget * w, widget_options_t options, gboolean enabl
 }
 
 /* --------------------------------------------------------------------------------------------- */
+
+static void
+input_delete_selection (WInput * input)
+{
+    long m1, m2;
+    if (input_eval_marks (input, &m1, &m2))
+        delete_region (input, m1, m2);
+}
+
+/* --------------------------------------------------------------------------------------------- */
+
+static cb_ret_t
+input_raw_handle_char (WInput * in, int key)
+{
+    cb_ret_t v;
+
+    input_free_completions (in);
+    v = insert_char (in, key);
+    input_update (in, TRUE);
+    return v;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+/**
+ * A highlight command like shift-arrow
+ */
+
+static gboolean
+mc_winput_cmd_start_highlight (const gchar * event_group_name, const gchar * event_name,
+                               gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (!input->highlight)
+    {
+        input_mark_cmd (input, FALSE);  /* clear */
+        input_mark_cmd (input, TRUE);   /* marking on */
+    }
+
+    input->is_highlight_cmd = TRUE;
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_stop_highlight (const gchar * event_group_name, const gchar * event_name,
+                              gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (input->highlight)
+        input_mark_cmd (input, FALSE);
+
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_begin_of_line (const gchar * event_group_name, const gchar * event_name,
+                             gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    input->point = 0;
+    input->charpoint = 0;
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_end_of_line (const gchar * event_group_name, const gchar * event_name,
+                           gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    input->point = str_length (input->buffer);
+    input->charpoint = 0;
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_backward_char (const gchar * event_group_name, const gchar * event_name,
+                             gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+    const char *act;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+
+    act = input->buffer + str_offset_to_pos (input->buffer, input->point);
+    if (input->point > 0)
+        input->point -= str_cprev_noncomb_char (&act, input->buffer);
+    input->charpoint = 0;
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_backward_word (const gchar * event_group_name, const gchar * event_name,
+                             gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+    const char *p, *p_tmp;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+
+    for (p = input->buffer + str_offset_to_pos (input->buffer, input->point);
+         (p != input->buffer) && (p[0] == '\0'); str_cprev_char (&p), input->point--);
+
+    while (p != input->buffer)
+    {
+        p_tmp = p;
+        str_cprev_char (&p);
+        if (!str_isspace (p) && !str_ispunct (p))
+        {
+            p = p_tmp;
+            break;
+        }
+        input->point--;
+    }
+    while (p != input->buffer)
+    {
+        str_cprev_char (&p);
+        if (str_isspace (p) || str_ispunct (p))
+            break;
+
+        input->point--;
+    }
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_forward_char (const gchar * event_group_name, const gchar * event_name,
+                            gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+    const char *act;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+
+    act = input->buffer + str_offset_to_pos (input->buffer, input->point);
+    if (act[0] != '\0')
+        input->point += str_cnext_noncomb_char (&act);
+    input->charpoint = 0;
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_forward_word (const gchar * event_group_name, const gchar * event_name,
+                            gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+    const char *p;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    p = input->buffer + str_offset_to_pos (input->buffer, input->point);
+    while (p[0] != '\0' && (str_isspace (p) || str_ispunct (p)))
+    {
+        str_cnext_char (&p);
+        input->point++;
+    }
+    while (p[0] != '\0' && !str_isspace (p) && !str_ispunct (p))
+    {
+        str_cnext_char (&p);
+        input->point++;
+    }
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_backspace (const gchar * event_group_name, const gchar * event_name,
+                         gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (input->highlight)
+        input_delete_selection (input);
+    else
+    {
+        const char *act;
+        int start;
+
+        act = input->buffer + str_offset_to_pos (input->buffer, input->point);
+
+        if (input->point != 0)
+        {
+            start = input->point - str_cprev_noncomb_char (&act, input->buffer);
+            move_buffer_backward (input, start, input->point);
+            input->charpoint = 0;
+            input->need_push = TRUE;
+            input->point = start;
+        }
+    }
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_delete (const gchar * event_group_name, const gchar * event_name,
+                      gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (input->first)
+        port_region_marked_for_delete (input);
+    else if (input->highlight)
+        input_delete_selection (input);
+    else
+        delete_char (input);
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_kill_word (const gchar * event_group_name, const gchar * event_name,
+                         gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+    int old_point = input->point;
+    int new_point;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    mc_winput_cmd_forward_word (NULL, NULL, NULL, input);
+    new_point = input->point;
+    input->point = old_point;
+
+    delete_region (input, old_point, new_point);
+    input->need_push = TRUE;
+    input->charpoint = 0;
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_back_kill_word (const gchar * event_group_name, const gchar * event_name,
+                              gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+    int old_point = input->point;
+    int new_point;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+
+    mc_winput_cmd_backward_word (NULL, NULL, NULL, input);
+    new_point = input->point;
+    input->point = old_point;
+
+    delete_region (input, old_point, new_point);
+    input->need_push = TRUE;
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_mark (const gchar * event_group_name, const gchar * event_name,
+                    gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    input_mark_cmd (input, TRUE);
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_remove (const gchar * event_group_name, const gchar * event_name,
+                      gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    delete_region (input, input->point, input->mark);
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_delete_to_end (const gchar * event_group_name, const gchar * event_name,
+                             gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+    int chp;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+
+    chp = str_offset_to_pos (input->buffer, input->point);
+    g_free (kill_buffer);
+    kill_buffer = g_strdup (&input->buffer[chp]);
+    input->buffer[chp] = '\0';
+    input->charpoint = 0;
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_clear_all (const gchar * event_group_name, const gchar * event_name,
+                         gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    input->need_push = TRUE;
+    input->buffer[0] = '\0';
+    input->point = 0;
+    input->mark = 0;
+    input->highlight = FALSE;
+    input->charpoint = 0;
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_clipboard_copy (const gchar * event_group_name, const gchar * event_name,
+                              gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+    int first, last;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    first = min (input->mark, input->point);
+    last = max (input->mark, input->point);
+
+    if (last == first)
+    {
+        /* Copy selected files to clipboard */
+        mc_event_raise (MCEVENT_GROUP_FILEMANAGER, "panel_save_current_file_to_clip_file", NULL);
+        /* try use external clipboard utility */
+        mc_event_raise (MCEVENT_GROUP_CORE, "clipboard_file_to_ext_clip", NULL);
+    }
+    else
+    {
+
+        g_free (kill_buffer);
+
+        first = str_offset_to_pos (input->buffer, first);
+        last = str_offset_to_pos (input->buffer, last);
+
+        kill_buffer = g_strndup (input->buffer + first, last - first);
+
+        mc_event_raise (MCEVENT_GROUP_CORE, "clipboard_text_to_file", kill_buffer);
+        /* try use external clipboard utility */
+        mc_event_raise (MCEVENT_GROUP_CORE, "clipboard_file_to_ext_clip", NULL);
+    }
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_clipboard_cut (const gchar * event_group_name, const gchar * event_name,
+                             gpointer init_data, gpointer data)
+{
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    mc_winput_cmd_clipboard_copy (NULL, NULL, NULL, data);
+    mc_winput_cmd_remove (NULL, NULL, NULL, data);
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_yank (const gchar * event_group_name, const gchar * event_name,
+                    gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (kill_buffer != NULL)
+    {
+        char *p;
+
+        input->charpoint = 0;
+        for (p = kill_buffer; *p != '\0'; p++)
+            insert_char (input, *p);
+        input->charpoint = 0;
+    }
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_clipboard_paste (const gchar * event_group_name, const gchar * event_name,
+                               gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+    ev_clipboard_text_from_file_t event_data;
+    char *p = NULL;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    /* try use external clipboard utility */
+    mc_event_raise (MCEVENT_GROUP_CORE, "clipboard_file_from_ext_clip", NULL);
+
+    event_data.text = &p;
+    mc_event_raise (MCEVENT_GROUP_CORE, "clipboard_text_from_file", &event_data);
+    if (event_data.ret)
+    {
+        char *pp;
+
+        for (pp = p; *pp != '\0'; pp++)
+            insert_char (input, *pp);
+
+        g_free (p);
+    }
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_history_previous (const gchar * event_group_name, const gchar * event_name,
+                                gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+    GList *prev;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    if (input->history.list == NULL)
+        return TRUE;
+
+    if (input->need_push)
+        push_history (input, input->buffer);
+
+    prev = g_list_previous (input->history.current);
+    if (prev != NULL)
+    {
+        input_assign_text (input, (char *) prev->data);
+        input->history.current = prev;
+        input->history.changed = TRUE;
+        input->need_push = FALSE;
+    }
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_history_next (const gchar * event_group_name, const gchar * event_name,
+                            gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+    GList *next;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+
+    if (input->need_push)
+    {
+        push_history (input, input->buffer);
+        input_assign_text (input, "");
+        return TRUE;
+    }
+
+    if (input->history.list == NULL)
+        return TRUE;
+
+    next = g_list_next (input->history.current);
+    if (next == NULL)
+    {
+        input_assign_text (input, "");
+        input->history.current = input->history.list;
+    }
+    else
+    {
+        input_assign_text (input, (char *) next->data);
+        input->history.current = next;
+        input->history.changed = TRUE;
+        input->need_push = FALSE;
+    }
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_history_show (const gchar * event_group_name, const gchar * event_name,
+                            gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+    size_t len;
+    char *r;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+
+    len = get_history_length (input->history.list);
+
+    r = history_show (&input->history.list, WIDGET (input),
+                      g_list_position (input->history.list, input->history.list));
+    if (r != NULL)
+    {
+        input_assign_text (input, r);
+        g_free (r);
+    }
+
+    /* Has history cleaned up or not? */
+    if (len != get_history_length (input->history.list))
+        input->history.changed = TRUE;
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_complete (const gchar * event_group_name, const gchar * event_name,
+                        gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    complete (input);
+    input->is_complete_cmd = TRUE;
+
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/* event callback */
+
+static gboolean
+mc_winput_cmd_enter_ctrl_sequence (const gchar * event_group_name, const gchar * event_name,
+                                   gpointer init_data, gpointer data)
+{
+    WInput *input = (WInput *) data;
+
+    (void) event_group_name;
+    (void) event_name;
+    (void) init_data;
+
+    input_raw_handle_char (input, ascii_alpha_to_cntrl (tty_getch ()));
+
+    return TRUE;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+
+static void
+mc_winput_init_events (GError ** error)
+{
+    /* *INDENT-OFF* */
+    event_init_t events[] =
+    {
+        {MC_WINPUT_EVENT_GROUP, "start_highlight", mc_winput_cmd_start_highlight, NULL},
+        {MC_WINPUT_EVENT_GROUP, "stop_highlight", mc_winput_cmd_stop_highlight, NULL},
+        {MC_WINPUT_EVENT_GROUP, "begin_of_line", mc_winput_cmd_begin_of_line, NULL},
+        {MC_WINPUT_EVENT_GROUP, "end_of_line", mc_winput_cmd_end_of_line, NULL},
+        {MC_WINPUT_EVENT_GROUP, "backward_char", mc_winput_cmd_backward_char, NULL},
+        {MC_WINPUT_EVENT_GROUP, "backward_word", mc_winput_cmd_backward_word, NULL},
+        {MC_WINPUT_EVENT_GROUP, "forward_char", mc_winput_cmd_forward_char, NULL},
+        {MC_WINPUT_EVENT_GROUP, "forward_word", mc_winput_cmd_forward_word, NULL},
+        {MC_WINPUT_EVENT_GROUP, "backspace", mc_winput_cmd_backspace, NULL},
+        {MC_WINPUT_EVENT_GROUP, "delete", mc_winput_cmd_delete, NULL},
+        {MC_WINPUT_EVENT_GROUP, "kill_word", mc_winput_cmd_kill_word, NULL},
+        {MC_WINPUT_EVENT_GROUP, "back_kill_word", mc_winput_cmd_back_kill_word, NULL},
+        {MC_WINPUT_EVENT_GROUP, "mark", mc_winput_cmd_mark, NULL},
+        {MC_WINPUT_EVENT_GROUP, "remove", mc_winput_cmd_remove, NULL},
+        {MC_WINPUT_EVENT_GROUP, "delete_to_end", mc_winput_cmd_delete_to_end, NULL},
+        {MC_WINPUT_EVENT_GROUP, "clear_all", mc_winput_cmd_clear_all, NULL},
+        {MC_WINPUT_EVENT_GROUP, "clipboard_copy", mc_winput_cmd_clipboard_copy, NULL},
+        {MC_WINPUT_EVENT_GROUP, "clipboard_cut", mc_winput_cmd_clipboard_cut, NULL},
+        {MC_WINPUT_EVENT_GROUP, "yank", mc_winput_cmd_yank, NULL},
+        {MC_WINPUT_EVENT_GROUP, "clipboard_paste", mc_winput_cmd_clipboard_paste, NULL},
+        {MC_WINPUT_EVENT_GROUP, "history_previous", mc_winput_cmd_history_previous, NULL},
+        {MC_WINPUT_EVENT_GROUP, "history_next", mc_winput_cmd_history_next, NULL},
+        {MC_WINPUT_EVENT_GROUP, "history_show", mc_winput_cmd_history_show, NULL},
+        {MC_WINPUT_EVENT_GROUP, "complete", mc_winput_cmd_complete, NULL},
+        {MC_WINPUT_EVENT_GROUP, "enter_ctrl_sequence", mc_winput_cmd_enter_ctrl_sequence, NULL},
+
+
+        {NULL, NULL, NULL, NULL}
+    };
+    /* *INDENT-ON* */
+
+    mc_event_mass_add (events, error);
+}
+
+/* --------------------------------------------------------------------------------------------- */
+
+static void
+mc_winput_bind_events_to_keymap (GError ** error)
+{
+    /* *INDENT-OFF* */
+    mc_keymap_event_init_t keymap_events[] =
+    {
+        {MC_WINPUT_KEYMAP_GROUP, "MarkLeft", MC_WINPUT_EVENT_GROUP, "start_highlight"},
+        {MC_WINPUT_KEYMAP_GROUP, "MarkRight", MC_WINPUT_EVENT_GROUP, "start_highlight"},
+        {MC_WINPUT_KEYMAP_GROUP, "MarkToWordBegin", MC_WINPUT_EVENT_GROUP, "start_highlight"},
+        {MC_WINPUT_KEYMAP_GROUP, "MarkToWordEnd", MC_WINPUT_EVENT_GROUP, "start_highlight"},
+        {MC_WINPUT_KEYMAP_GROUP, "MarkToHome", MC_WINPUT_EVENT_GROUP, "start_highlight"},
+        {MC_WINPUT_KEYMAP_GROUP, "MarkToEnd", MC_WINPUT_EVENT_GROUP, "start_highlight"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "WordRight", MC_WINPUT_EVENT_GROUP, "stop_highlight"},
+        {MC_WINPUT_KEYMAP_GROUP, "WordLeft", MC_WINPUT_EVENT_GROUP, "stop_highlight"},
+        {MC_WINPUT_KEYMAP_GROUP, "Right", MC_WINPUT_EVENT_GROUP, "stop_highlight"},
+        {MC_WINPUT_KEYMAP_GROUP, "Left", MC_WINPUT_EVENT_GROUP, "stop_highlight"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "Home", MC_WINPUT_EVENT_GROUP, "begin_of_line"},
+        {MC_WINPUT_KEYMAP_GROUP, "MarkToHome", MC_WINPUT_EVENT_GROUP, "begin_of_line"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "End", MC_WINPUT_EVENT_GROUP, "end_of_line"},
+        {MC_WINPUT_KEYMAP_GROUP, "MarkToEnd", MC_WINPUT_EVENT_GROUP, "end_of_line"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "Left", MC_WINPUT_EVENT_GROUP, "backward_char"},
+        {MC_WINPUT_KEYMAP_GROUP, "MarkLeft", MC_WINPUT_EVENT_GROUP, "backward_char"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "WordLeft", MC_WINPUT_EVENT_GROUP, "backward_word"},
+        {MC_WINPUT_KEYMAP_GROUP, "MarkToWordBegin", MC_WINPUT_EVENT_GROUP, "backward_word"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "Right", MC_WINPUT_EVENT_GROUP, "forward_char"},
+        {MC_WINPUT_KEYMAP_GROUP, "MarkRight", MC_WINPUT_EVENT_GROUP, "forward_char"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "WordRight", MC_WINPUT_EVENT_GROUP, "forward_word"},
+        {MC_WINPUT_KEYMAP_GROUP, "MarkToWordEnd", MC_WINPUT_EVENT_GROUP, "forward_word"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "Backspace", MC_WINPUT_EVENT_GROUP, "backspace"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "Delete", MC_WINPUT_EVENT_GROUP, "delete"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "DeleteToWordEnd", MC_WINPUT_EVENT_GROUP, "kill_word"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "DeleteToWordBegin", MC_WINPUT_EVENT_GROUP, "back_kill_word"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "Mark", MC_WINPUT_EVENT_GROUP, "mark"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "Remove", MC_WINPUT_EVENT_GROUP, "remove"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "DeleteToEnd", MC_WINPUT_EVENT_GROUP, "delete_to_end"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "Clear", MC_WINPUT_EVENT_GROUP, "clear_all"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "Store", MC_WINPUT_EVENT_GROUP, "clipboard_copy"},
+        {MC_WINPUT_KEYMAP_GROUP, "ClipboardCopy", MC_WINPUT_EVENT_GROUP, "clipboard_copy"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "Cut", MC_WINPUT_EVENT_GROUP, "clipboard_cut"},
+        {MC_WINPUT_KEYMAP_GROUP, "ClipboardCut", MC_WINPUT_EVENT_GROUP, "clipboard_cut"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "Yank", MC_WINPUT_EVENT_GROUP, "yank"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "Paste", MC_WINPUT_EVENT_GROUP, "clipboard_paste"},
+        {MC_WINPUT_KEYMAP_GROUP, "ClipboardPaste", MC_WINPUT_EVENT_GROUP, "clipboard_paste"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "HistoryPrev", MC_WINPUT_EVENT_GROUP, "history_previous"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "HistoryNext", MC_WINPUT_EVENT_GROUP, "history_next"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "History", MC_WINPUT_EVENT_GROUP, "history_show"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "Complete", MC_WINPUT_EVENT_GROUP, "complete"},
+
+        {MC_WINPUT_KEYMAP_GROUP, "EnterCtrlSeq", MC_WINPUT_EVENT_GROUP, "enter_ctrl_sequence"},
+
+        {NULL, NULL, NULL, NULL}
+    };
+    /* *INDENT-ON* */
+
+    mc_keymap_mass_bind_event (keymap_events, error);
+}
+
+/* --------------------------------------------------------------------------------------------- */
 /*** public functions ****************************************************************************/
+/* --------------------------------------------------------------------------------------------- */
+
+void
+mc_winput_set_default_colors (void)
+{
+    input_colors[WINPUTC_MAIN] = INPUT_COLOR;
+    input_colors[WINPUTC_MARK] = INPUT_MARK_COLOR;
+    input_colors[WINPUTC_UNCHANGED] = INPUT_UNCHANGED_COLOR;
+    input_colors[WINPUTC_HISTORY] = INPUT_HISTORY_COLOR;
+}
+
+/* --------------------------------------------------------------------------------------------- */
+
+void
+mc_winput_init (GError ** error)
+{
+    mc_winput_set_default_colors ();
+    mc_winput_init_events (error);
+    mc_winput_bind_events_to_keymap (error);
+}
+
 /* --------------------------------------------------------------------------------------------- */
 
 /** Create new instance of WInput object.
@@ -1007,6 +1375,8 @@ input_new (int y, int x, const int *colors, int width, const char *def_text,
     in->color = colors;
     in->first = TRUE;
     in->highlight = FALSE;
+    in->is_highlight_cmd = FALSE;
+    in->is_complete_cmd = FALSE;
     in->term_first_shown = 0;
     in->disable_update = 0;
     in->is_password = FALSE;
@@ -1059,14 +1429,6 @@ input_callback (Widget * w, Widget * sender, widget_msg_t msg, int parm, void *d
         return MSG_HANDLED;
 
     case MSG_KEY:
-        if (parm == XCTRL ('q'))
-        {
-            quote = 1;
-            v = input_handle_char (in, ascii_alpha_to_cntrl (tty_getch ()));
-            quote = 0;
-            return v;
-        }
-
         /* Keys we want others to handle */
         if (parm == KEY_UP || parm == KEY_DOWN || parm == ESC_CHAR
             || parm == KEY_F (10) || parm == '\n')
@@ -1075,16 +1437,11 @@ input_callback (Widget * w, Widget * sender, widget_msg_t msg, int parm, void *d
         /* When pasting multiline text, insert literal Enter */
         if ((parm & ~KEY_M_MASK) == '\n')
         {
-            quote = 1;
-            v = input_handle_char (in, '\n');
-            quote = 0;
+            v = input_raw_handle_char (in, '\n');
             return v;
         }
 
         return input_handle_char (in, parm);
-
-    case MSG_ACTION:
-        return input_execute_cmd (in, parm);
 
     case MSG_RESIZE:
     case MSG_FOCUS:
@@ -1112,35 +1469,19 @@ input_callback (Widget * w, Widget * sender, widget_msg_t msg, int parm, void *d
 
 /* --------------------------------------------------------------------------------------------- */
 
-void
-input_set_default_colors (void)
-{
-    input_colors[WINPUTC_MAIN] = INPUT_COLOR;
-    input_colors[WINPUTC_MARK] = INPUT_MARK_COLOR;
-    input_colors[WINPUTC_UNCHANGED] = INPUT_UNCHANGED_COLOR;
-    input_colors[WINPUTC_HISTORY] = INPUT_HISTORY_COLOR;
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
 cb_ret_t
 input_handle_char (WInput * in, int key)
 {
     cb_ret_t v;
-    unsigned long command;
+    gboolean keymap_handled;
 
-    if (quote != 0)
-    {
-        input_free_completions (in);
-        v = insert_char (in, key);
-        input_update (in, TRUE);
-        quote = 0;
-        return v;
-    }
+    keymap_handled = mc_keymap_process_group (MC_WINPUT_KEYMAP_GROUP, key, in, NULL);
 
-    command = keybind_lookup_keymap_command (input_map, key);
+    if (!in->is_highlight_cmd)
+        in->highlight = FALSE;
+    in->is_highlight_cmd = FALSE;
 
-    if (command == CK_IgnoreKey)
+    if (!keymap_handled)
     {
         if (key > 255)
             return MSG_NOT_HANDLED;
@@ -1148,12 +1489,13 @@ input_handle_char (WInput * in, int key)
             port_region_marked_for_delete (in);
         input_free_completions (in);
         v = insert_char (in, key);
+
     }
     else
     {
-        if (command != CK_Complete)
+        if (!in->is_complete_cmd)
             input_free_completions (in);
-        input_execute_cmd (in, command);
+        in->is_complete_cmd = FALSE;
         v = MSG_HANDLED;
         if (in->first)
             input_update (in, TRUE);    /* needed to clear in->first */
@@ -1169,17 +1511,15 @@ input_handle_char (WInput * in, int key)
 /* Returns 0 if it is not a special key, 1 if it is a non-complete key
    and 2 if it is a complete key */
 int
-input_key_is_in_map (WInput * in, int key)
+input_key_is_in_map (int key)
 {
-    unsigned long command;
+    const char *key_name;
 
-    (void) in;
-
-    command = keybind_lookup_keymap_command (input_map, key);
-    if (command == CK_IgnoreKey)
+    key_name = mc_keymap_get_key_name_by_code (MC_WINPUT_KEYMAP_GROUP, key, NULL);
+    if (key_name == NULL)
         return 0;
 
-    return (command == CK_Complete) ? 2 : 1;
+    return strcmp (key_name, "Complete") == 0 ? 2 : 1;
 }
 
 /* --------------------------------------------------------------------------------------------- */

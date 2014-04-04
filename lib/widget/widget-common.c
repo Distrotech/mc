@@ -58,6 +58,31 @@
 /* --------------------------------------------------------------------------------------------- */
 /*** public functions ****************************************************************************/
 /* --------------------------------------------------------------------------------------------- */
+/**
+ * Initialize whole widget system.
+ *
+ * @param error the error storage object
+ */
+
+void
+mc_widgets_init (GError ** error)
+{
+    mc_wdialog_init (error);
+    mc_winput_init (error);
+    mc_wlistbox_init (error);
+}
+
+/* --------------------------------------------------------------------------------------------- */
+
+void
+mc_widgets_set_default_colors (void)
+{
+    mc_wdialog_set_default_colors ();
+    mc_winput_set_default_colors ();
+}
+
+
+/* --------------------------------------------------------------------------------------------- */
 
 struct hotkey_t
 parse_hotkey (const char *text)
