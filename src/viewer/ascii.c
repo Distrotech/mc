@@ -191,7 +191,9 @@
 
 /*** file scope variables ************************************************************************/
 
+/* --------------------------------------------------------------------------------------------- */
 /*** file scope functions ************************************************************************/
+/* --------------------------------------------------------------------------------------------- */
 
 /* TODO: These methods shouldn't be necessary, see ticket 3257 */
 
@@ -210,6 +212,8 @@ mcview_wcwidth (const mcview_t * view, int c)
     return 1;
 }
 
+/* --------------------------------------------------------------------------------------------- */
+
 static gboolean
 mcview_ismark (const mcview_t * view, int c)
 {
@@ -220,6 +224,8 @@ mcview_ismark (const mcview_t * view, int c)
     return FALSE;
 }
 
+/* --------------------------------------------------------------------------------------------- */
+
 /* actually is_non_spacing_mark_or_enclosing_mark */
 static gboolean
 mcview_is_non_spacing_mark (const mcview_t * view, int c)
@@ -227,12 +233,17 @@ mcview_is_non_spacing_mark (const mcview_t * view, int c)
 #ifdef HAVE_CHARSET
     if (view->utf8)
     {
-        GUnicodeType type = g_unichar_type (c);
+        GUnicodeType type;
+
+        type = g_unichar_type (c);
+
         return type == G_UNICODE_NON_SPACING_MARK || type == G_UNICODE_ENCLOSING_MARK;
     }
 #endif /* HAVE_CHARSET */
     return FALSE;
 }
+
+/* --------------------------------------------------------------------------------------------- */
 
 #if 0
 static gboolean
@@ -240,13 +251,13 @@ mcview_is_spacing_mark (const mcview_t * view, int c)
 {
 #ifdef HAVE_CHARSET
     if (view->utf8)
-    {
         return g_unichar_type (c) == G_UNICODE_SPACING_MARK;
-    }
 #endif /* HAVE_CHARSET */
     return FALSE;
 }
 #endif /* 0 */
+
+/* --------------------------------------------------------------------------------------------- */
 
 static gboolean
 mcview_isprint (const mcview_t * view, int c)
@@ -260,6 +271,8 @@ mcview_isprint (const mcview_t * view, int c)
     return is_printable (c);
 }
 
+/* --------------------------------------------------------------------------------------------- */
+
 static int
 mcview_char_display (const mcview_t * view, int c, char *s)
 {
@@ -272,7 +285,7 @@ mcview_char_display (const mcview_t * view, int c, char *s)
             c = '.';
         return g_unichar_to_utf8 (c, s);
     }
-    else if (view->utf8)
+    if (view->utf8)
     {
         if (g_unichar_iswide (c))
         {
@@ -299,7 +312,7 @@ mcview_char_display (const mcview_t * view, int c, char *s)
 
 /* --------------------------------------------------------------------------------------------- */
 
-/*
+/**
  * Just for convenience, a common interface in front of mcview_get_utf and mcview_get_byte, so that
  * the caller doesn't have to care about utf8 vs 8-bit modes.
  *
@@ -317,9 +330,8 @@ mcview_get_next_char (mcview_t * view, mcview_state_machine_t * state, int *c)
 
     /* Pretend EOF if we reached force_max */
     if (view->force_max >= 0 && state->offset >= view->force_max)
-    {
         return FALSE;
-    }
+
 #ifdef HAVE_CHARSET
     if (view->utf8)
     {
@@ -328,9 +340,8 @@ mcview_get_next_char (mcview_t * view, mcview_state_machine_t * state, int *c)
             return FALSE;
         /* Pretend EOF if we crossed force_max */
         if (view->force_max >= 0 && state->offset + bytes_consumed > view->force_max)
-        {
             return FALSE;
-        }
+
         state->offset += bytes_consumed;
         return TRUE;
     }
@@ -341,7 +352,8 @@ mcview_get_next_char (mcview_t * view, mcview_state_machine_t * state, int *c)
     return TRUE;
 }
 
-/*
+/* --------------------------------------------------------------------------------------------- */
+/**
  * This function parses the next nroff character and gives it to you along with its desired color,
  * so you never have to care about nroff again.
  *
@@ -396,7 +408,6 @@ mcview_get_next_maybe_nroff_char (mcview_t * view, mcview_state_machine_t * stat
         if (color != NULL)
             *color =
                 state->nroff_underscore_is_underlined ? VIEW_UNDERLINED_COLOR : VIEW_BOLD_COLOR;
-        return TRUE;
     }
     else if (*c == c3)
     {
@@ -404,7 +415,6 @@ mcview_get_next_maybe_nroff_char (mcview_t * view, mcview_state_machine_t * stat
         state->nroff_underscore_is_underlined = FALSE;
         if (color != NULL)
             *color = VIEW_BOLD_COLOR;
-        return TRUE;
     }
     else if (*c == '_')
     {
@@ -413,15 +423,13 @@ mcview_get_next_maybe_nroff_char (mcview_t * view, mcview_state_machine_t * stat
         state->nroff_underscore_is_underlined = TRUE;
         if (color != NULL)
             *color = VIEW_UNDERLINED_COLOR;
-        return TRUE;
     }
-    else
-    {
-        return TRUE;
-    }
+
+    return TRUE;
 }
 
-/*
+/* --------------------------------------------------------------------------------------------- */
+/**
  * Get one base character, along with its combining or spacing mark characters.
  *
  * (A spacing mark is a character that extends the base character's width 1 into a combined
@@ -452,7 +460,6 @@ mcview_next_combining_char_sequence (mcview_t * view, mcview_state_machine_t * s
                                      int clen, int *color)
 {
     int i = 1;
-    mcview_state_machine_t state_after_combining;
 
     if (!mcview_get_next_maybe_nroff_char (view, state, cs, color))
         return 0;
@@ -461,6 +468,7 @@ mcview_next_combining_char_sequence (mcview_t * view, mcview_state_machine_t * s
     if (cs[0] == '\r')
     {
         int cnext;
+
         mcview_state_machine_t state_after_crlf = *state;
         if (mcview_get_next_maybe_nroff_char (view, &state_after_crlf, &cnext, NULL)
             && cnext == '\n')
@@ -499,6 +507,8 @@ mcview_next_combining_char_sequence (mcview_t * view, mcview_state_machine_t * s
      * or at most 1 spacing mark. Is this logic correct? */
     for (; i < clen; i++)
     {
+        mcview_state_machine_t state_after_combining;
+
         state_after_combining = *state;
         if (!mcview_get_next_maybe_nroff_char (view, &state_after_combining, &cs[i], NULL))
             return i;
@@ -519,7 +529,8 @@ mcview_next_combining_char_sequence (mcview_t * view, mcview_state_machine_t * s
     return i;
 }
 
-/*
+/* --------------------------------------------------------------------------------------------- */
+/**
  * Parse, format and possibly display one visual line of text.
  *
  * Formatting starts at the given "state" (which encodes the file offset and parser and formatter's
@@ -552,13 +563,9 @@ mcview_display_line (mcview_t * view, mcview_state_machine_t * state, int row,
     const screen_dimen height = view->data_area.height;
     off_t dpy_text_column = view->text_wrap_mode ? 0 : view->dpy_text_column;
     screen_dimen col = 0;
-    int color;
     int cs[1 + MAX_COMBINING_CHARS];
-    int n;
     char str[(1 + MAX_COMBINING_CHARS) * UTF8_CHAR_LEN + 1];
-    int charwidth;
     int i, j;
-    mcview_state_machine_t state_saved;
 
     if (paragraph_ended != NULL)
         *paragraph_ended = TRUE;
@@ -567,14 +574,23 @@ mcview_display_line (mcview_t * view, mcview_state_machine_t * state, int row,
     {
         /* Optimization: Fast forward to the end of the line, rather than carefully
          * parsing and then not actually displaying it. */
-        off_t eol = mcview_eol (view, state->offset, mcview_get_filesize (view));
-        int retval = (eol > state->offset) ? 1 : 0;
+        off_t eol;
+        int retval;
+
+        eol = mcview_eol (view, state->offset, mcview_get_filesize (view));
+        retval = (eol > state->offset) ? 1 : 0;
+
         mcview_state_machine_init (state, eol);
         return retval;
     }
 
-    while (1)
+    while (TRUE)
     {
+        int charwidth = 0;
+        mcview_state_machine_t state_saved;
+        int n;
+        int color;
+
         state_saved = *state;
         n = mcview_next_combining_char_sequence (view, state, cs, 1 + MAX_COMBINING_CHARS, &color);
         if (n == 0)
@@ -600,7 +616,6 @@ mcview_display_line (mcview_t * view, mcview_state_machine_t * state, int row,
         if ((!mcview_isprint (view, cs[0]) || mcview_ismark (view, cs[0])) && cs[0] != '\t')
             cs[0] = '.';
 
-        charwidth = 0;
         for (i = 0; i < n; i++)
             charwidth += mcview_wcwidth (view, cs[i]);
 
@@ -613,9 +628,7 @@ mcview_display_line (mcview_t * view, mcview_state_machine_t * state, int row,
             state->print_lonely_combining = TRUE;
         }
         else
-        {
             state->print_lonely_combining = FALSE;
-        }
 
         /* In wrap mode only: We're done with this row if the character sequence wouldn't fit.
          * Except if at the first column, because then it wouldn't fit in the next row either.
@@ -646,9 +659,7 @@ mcview_display_line (mcview_t * view, mcview_state_machine_t * state, int row,
                 {
                     j = 0;
                     for (i = 0; i < n; i++)
-                    {
                         j += mcview_char_display (view, cs[i], str + j);
-                    }
                     str[j] = '\0';
                     /* This is probably a bug in our tty layer, but tty_print_string
                      * normalizes the string, whereas tty_printf doesn't. Don't normalize,
@@ -692,14 +703,17 @@ mcview_display_line (mcview_t * view, mcview_state_machine_t * state, int row,
         {
             /* Optimization: Fast forward to the end of the line, rather than carefully
              * parsing and then not actually displaying it. */
-            off_t eol = mcview_eol (view, state->offset, mcview_get_filesize (view));
+            off_t eol;
+
+            eol = mcview_eol (view, state->offset, mcview_get_filesize (view));
             mcview_state_machine_init (state, eol);
             return 1;
         }
     }
 }
 
-/*
+/* --------------------------------------------------------------------------------------------- */
+/**
  * Parse, format and possibly display one paragraph (perhaps not from the beginning).
  *
  * Formatting starts at the given "state" (which encodes the file offset and parser and formatter's
@@ -729,10 +743,11 @@ mcview_display_paragraph (mcview_t * view, mcview_state_machine_t * state, int r
 {
     const screen_dimen height = view->data_area.height;
     int lines = 0;
-    gboolean paragraph_ended;
 
-    while (1)
+    while (TRUE)
     {
+        gboolean paragraph_ended;
+
         lines += mcview_display_line (view, state, row, &paragraph_ended);
         if (paragraph_ended)
             return lines;
@@ -747,7 +762,8 @@ mcview_display_paragraph (mcview_t * view, mcview_state_machine_t * state, int r
     }
 }
 
-/*
+/* --------------------------------------------------------------------------------------------- */
+/**
  * Recompute dpy_state_top from dpy_start and dpy_paragraph_skip_lines. Clamp
  * dpy_paragraph_skip_lines if necessary.
  *
@@ -762,8 +778,6 @@ mcview_display_paragraph (mcview_t * view, mcview_state_machine_t * state, int r
 static void
 mcview_wrap_fixup (mcview_t * view)
 {
-    mcview_state_machine_t state_prev;
-    gboolean paragraph_ended;
     int lines = view->dpy_paragraph_skip_lines;
 
     if (!view->dpy_wrap_dirty)
@@ -773,8 +787,11 @@ mcview_wrap_fixup (mcview_t * view)
     view->dpy_paragraph_skip_lines = 0;
     mcview_state_machine_init (&view->dpy_state_top, view->dpy_start);
 
-    while (lines--)
+    while (lines-- != 0)
     {
+        mcview_state_machine_t state_prev;
+        gboolean paragraph_ended;
+
         state_prev = view->dpy_state_top;
         if (mcview_display_line (view, &view->dpy_state_top, -1, &paragraph_ended) == 0)
             break;
@@ -791,7 +808,7 @@ mcview_wrap_fixup (mcview_t * view)
 /*** public functions ****************************************************************************/
 /* --------------------------------------------------------------------------------------------- */
 
-/*
+/**
  * In both wrap and unwrap modes, dpy_start points to the beginning of the paragraph.
  *
  * In unwrap mode, start displaying from this position, probably applying an additional horizontal
@@ -809,28 +826,27 @@ mcview_display_text (mcview_t * view)
     const screen_dimen top = view->data_area.top;
     const screen_dimen height = view->data_area.height;
     int row;
-    int n;
     mcview_state_machine_t state;
     gboolean again;
 
     do
     {
+        int n;
+
         again = FALSE;
 
         mcview_display_clean (view);
         mcview_display_ruler (view);
 
-        if (view->text_wrap_mode)
+        if (!view->text_wrap_mode)
+            mcview_state_machine_init (&state, view->dpy_start);
+        else
         {
             mcview_wrap_fixup (view);
             state = view->dpy_state_top;
         }
-        else
-        {
-            mcview_state_machine_init (&state, view->dpy_start);
-        }
-        row = 0;
-        while (row < (int) height)
+
+        for (row = 0; row < (int) height; row += n)
         {
             n = mcview_display_paragraph (view, &state, row);
             if (n == 0)
@@ -847,7 +863,6 @@ mcview_display_text (mcview_t * view)
                 }
                 break;
             }
-            row += n;
         }
     }
     while (again);
@@ -856,7 +871,6 @@ mcview_display_text (mcview_t * view)
     view->dpy_state_bottom = state;
 
     if (mcview_show_eof != NULL && mcview_show_eof[0] != '\0')
-    {
         while (row < (int) height)
         {
             widget_move (view, top + row, left);
@@ -864,10 +878,10 @@ mcview_display_text (mcview_t * view)
             tty_print_string (mcview_show_eof);
             row++;
         }
-    }
 }
 
-/*
+/* --------------------------------------------------------------------------------------------- */
+/**
  * Move down.
  *
  * It's very simple. Just invisibly format the next "lines" lines, carefully carrying the formatter
@@ -881,10 +895,10 @@ mcview_display_text (mcview_t * view)
 void
 mcview_ascii_move_down (mcview_t * view, off_t lines)
 {
-    gboolean paragraph_ended;
-
-    while (lines--)
+    while (lines-- != 0)
     {
+        gboolean paragraph_ended;
+
         /* See if there's still data below the bottom line, by imaginarily displaying one
          * more line. This takes care of reading more data into growbuf, if required.
          * If the end position didn't advance, we're at EOF and hence bail out. */
@@ -902,20 +916,19 @@ mcview_ascii_move_down (mcview_t * view, off_t lines)
         else
         {
             mcview_display_line (view, &view->dpy_state_top, -1, &paragraph_ended);
-            if (paragraph_ended)
+            if (!paragraph_ended)
+                view->dpy_paragraph_skip_lines++;
+            else
             {
                 view->dpy_start = view->dpy_state_top.offset;
                 view->dpy_paragraph_skip_lines = 0;
-            }
-            else
-            {
-                view->dpy_paragraph_skip_lines++;
             }
         }
     }
 }
 
-/*
+/* --------------------------------------------------------------------------------------------- */
+/**
  * Move up.
  *
  * Unwrap mode: Piece of cake. Wrap mode: If we'd walk back more than the current line offset
@@ -931,17 +944,18 @@ mcview_ascii_move_down (mcview_t * view, off_t lines)
 void
 mcview_ascii_move_up (mcview_t * view, off_t lines)
 {
-    int i;
 
     if (!view->text_wrap_mode)
     {
-        while (lines--)
+        while (lines-- != 0)
             view->dpy_start = mcview_bol (view, view->dpy_start - 1, 0);
         view->dpy_paragraph_skip_lines = 0;
         view->dpy_wrap_dirty = TRUE;
     }
     else
     {
+        int i;
+
         while (lines > view->dpy_paragraph_skip_lines)
         {
             /* We need to go back to the previous paragraph. */
