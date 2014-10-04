@@ -551,11 +551,12 @@ mcview_next_combining_char_sequence (mcview_t * view, mcview_state_machine_t * s
  * @param row print to this row
  * @param paragraph_ended store TRUE if paragraph ended by newline or EOF, FALSE if wraps to next
  *   line
+ * @param linewidth store the width of the line here
  * @return the number of rows, that is, 0 if we were already at EOF, otherwise 1
  */
 static int
 mcview_display_line (mcview_t * view, mcview_state_machine_t * state, int row,
-                     gboolean * paragraph_ended)
+                     gboolean * paragraph_ended, off_t * linewidth)
 {
     const screen_dimen left = view->data_area.left;
     const screen_dimen top = view->data_area.top;
@@ -570,7 +571,7 @@ mcview_display_line (mcview_t * view, mcview_state_machine_t * state, int row,
     if (paragraph_ended != NULL)
         *paragraph_ended = TRUE;
 
-    if (!view->text_wrap_mode && (row < 0 || row >= (int) height))
+    if (!view->text_wrap_mode && (row < 0 || row >= (int) height) && linewidth == NULL)
     {
         /* Optimization: Fast forward to the end of the line, rather than carefully
          * parsing and then not actually displaying it. */
@@ -594,7 +595,11 @@ mcview_display_line (mcview_t * view, mcview_state_machine_t * state, int row,
         state_saved = *state;
         n = mcview_next_combining_char_sequence (view, state, cs, 1 + MAX_COMBINING_CHARS, &color);
         if (n == 0)
+        {
+            if (linewidth != NULL)
+                *linewidth = col;
             return (col > 0) ? 1 : 0;
+        }
 
         if (view->search_start <= state->offset && state->offset < view->search_end)
             color = SELECTED_COLOR;
@@ -603,6 +608,8 @@ mcview_display_line (mcview_t * view, mcview_state_machine_t * state, int row,
         {
             /* New line: reset all formatting state for the next paragraph. */
             mcview_state_machine_init (state, state->offset);
+            if (linewidth != NULL)
+                *linewidth = col;
             return 1;
         }
 
@@ -638,6 +645,8 @@ mcview_display_line (mcview_t * view, mcview_state_machine_t * state, int row,
             *state = state_saved;
             if (paragraph_ended != NULL)
                 *paragraph_ended = FALSE;
+            if (linewidth != NULL)
+                *linewidth = col;
             return 1;
         }
 
@@ -699,7 +708,7 @@ mcview_display_line (mcview_t * view, mcview_state_machine_t * state, int row,
         col += charwidth;
         state->unwrapped_column += charwidth;
 
-        if (!view->text_wrap_mode && col >= dpy_text_column + width)
+        if (!view->text_wrap_mode && col >= dpy_text_column + width && linewidth == NULL)
         {
             /* Optimization: Fast forward to the end of the line, rather than carefully
              * parsing and then not actually displaying it. */
@@ -748,7 +757,7 @@ mcview_display_paragraph (mcview_t * view, mcview_state_machine_t * state, int r
     {
         gboolean paragraph_ended;
 
-        lines += mcview_display_line (view, state, row, &paragraph_ended);
+        lines += mcview_display_line (view, state, row, &paragraph_ended, NULL);
         if (paragraph_ended)
             return lines;
 
@@ -793,7 +802,7 @@ mcview_wrap_fixup (mcview_t * view)
         gboolean paragraph_ended;
 
         state_prev = view->dpy_state_top;
-        if (mcview_display_line (view, &view->dpy_state_top, -1, &paragraph_ended) == 0)
+        if (mcview_display_line (view, &view->dpy_state_top, -1, &paragraph_ended, NULL) == 0)
             break;
         if (paragraph_ended)
         {
@@ -903,7 +912,7 @@ mcview_ascii_move_down (mcview_t * view, off_t lines)
         /* See if there's still data below the bottom line, by imaginarily displaying one
          * more line. This takes care of reading more data into growbuf, if required.
          * If the end position didn't advance, we're at EOF and hence bail out. */
-        if (mcview_display_line (view, &view->dpy_state_bottom, -1, &paragraph_ended) == 0)
+        if (mcview_display_line (view, &view->dpy_state_bottom, -1, &paragraph_ended, NULL) == 0)
             break;
 
         /* Okay, there's enough data. Move by 1 row at the top, too. No need to check for
@@ -916,7 +925,7 @@ mcview_ascii_move_down (mcview_t * view, off_t lines)
         }
         else
         {
-            mcview_display_line (view, &view->dpy_state_top, -1, &paragraph_ended);
+            mcview_display_line (view, &view->dpy_state_top, -1, &paragraph_ended, NULL);
             if (!paragraph_ended)
                 view->dpy_paragraph_skip_lines++;
             else
@@ -987,7 +996,36 @@ mcview_ascii_move_up (mcview_t * view, off_t lines)
         mcview_state_machine_init (&view->dpy_state_top, view->dpy_start);
         view->dpy_paragraph_skip_lines -= lines;
         for (i = 0; i < view->dpy_paragraph_skip_lines; i++)
-            mcview_display_line (view, &view->dpy_state_top, -1, NULL);
+            mcview_display_line (view, &view->dpy_state_top, -1, NULL, NULL);
+    }
+}
+
+/* --------------------------------------------------------------------------------------------- */
+
+void
+mcview_ascii_moveto_bol (mcview_t * view)
+{
+    if (!view->text_wrap_mode)
+    {
+        view->dpy_text_column = 0;
+    }
+}
+
+/* --------------------------------------------------------------------------------------------- */
+
+void
+mcview_ascii_moveto_eol (mcview_t * view)
+{
+    if (!view->text_wrap_mode)
+    {
+        mcview_state_machine_t state;
+        off_t linewidth;
+
+        /* Get the width of the topmost paragraph. */
+        mcview_state_machine_init (&state, view->dpy_start);
+        mcview_display_line (view, &state, -1, NULL, &linewidth);
+        view->dpy_text_column =
+            (linewidth > view->data_area.width) ? (linewidth - view->data_area.width) : 0;
     }
 }
 

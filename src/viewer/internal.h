@@ -243,6 +243,8 @@ void mcview_display_text (mcview_t *);
 void mcview_state_machine_init (mcview_state_machine_t *, off_t);
 void mcview_ascii_move_down (mcview_t *, off_t);
 void mcview_ascii_move_up (mcview_t *, off_t);
+void mcview_ascii_moveto_bol (mcview_t *);
+void mcview_ascii_moveto_eol (mcview_t *);
 
 /* coord_cache.c: */
 coord_cache_t *coord_cache_new (void);
