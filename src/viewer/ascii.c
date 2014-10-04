@@ -870,6 +870,7 @@ mcview_display_text (mcview_t * view)
     view->dpy_end = state.offset;
     view->dpy_state_bottom = state;
 
+    tty_setcolor (VIEW_NORMAL_COLOR);
     if (mcview_show_eof != NULL && mcview_show_eof[0] != '\0')
         while (row < (int) height)
         {
