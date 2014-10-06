@@ -1006,9 +1006,7 @@ void
 mcview_ascii_moveto_bol (mcview_t * view)
 {
     if (!view->text_wrap_mode)
-    {
         view->dpy_text_column = 0;
-    }
 }
 
 /* --------------------------------------------------------------------------------------------- */
@@ -1024,8 +1022,7 @@ mcview_ascii_moveto_eol (mcview_t * view)
         /* Get the width of the topmost paragraph. */
         mcview_state_machine_init (&state, view->dpy_start);
         mcview_display_line (view, &state, -1, NULL, &linewidth);
-        view->dpy_text_column =
-            (linewidth > view->data_area.width) ? (linewidth - view->data_area.width) : 0;
+        view->dpy_text_column = mcview_offset_doz (linewidth, (off_t) view->data_area.width);
     }
 }
 
