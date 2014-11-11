@@ -1944,20 +1944,10 @@ copy_file_file (file_op_total_context_t * tctx, file_op_context_t * ctx,
 
     if (dst_status == DEST_SHORT)
     {
-        /* In case of copy/move to full partition, keep source file.
-           Query to remove destination file if it was created.
-           If destination file was appended, keep it anyway. */
-        if (!write_errno_nospace && !appending)
-        {
-            int result;
-
-            /* Remove short file */
-            result = query_dialog (Q_ ("DialogTitle|Copy"),
-                                   _("Incomplete file was retrieved. Keep it?"),
-                                   D_ERROR, 2, _("&Delete"), _("&Keep"));
-            if (result == 0)
-                mc_unlink (dst_vpath);
-        }
+        /* Query to remove short file */
+        if (query_dialog (Q_ ("DialogTitle|Copy"), _("Incomplete file was retrieved. Keep it?"),
+                          D_ERROR, 2, _("&Delete"), _("&Keep")) == 0)
+            mc_unlink (dst_vpath);
     }
     else if (dst_status == DEST_FULL)
     {
