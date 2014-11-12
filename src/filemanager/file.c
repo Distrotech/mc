@@ -1497,7 +1497,6 @@ copy_file_file (file_op_total_context_t * tctx, file_op_context_t * ctx,
     int open_flags;
     gboolean is_first_time = TRUE;
     vfs_path_t *src_vpath = NULL, *dst_vpath = NULL;
-    gboolean write_errno_nospace = FALSE;
 
     /* FIXME: We should not be using global variables! */
     ctx->do_reget = 0;
@@ -1833,6 +1832,8 @@ copy_file_file (file_op_total_context_t * tctx, file_op_context_t * ctx,
                 /* dst_write */
                 while ((n_written = mc_write (dest_desc, t, n_read)) < n_read)
                 {
+                    gboolean write_errno_nospace;
+
                     if (n_written > 0)
                     {
                         n_read -= n_written;
@@ -1862,10 +1863,6 @@ copy_file_file (file_op_total_context_t * tctx, file_op_context_t * ctx,
                     }
                     if (return_status != FILE_RETRY)
                         goto ret;
-
-                    /* User pressed "Retry". Will the next mc_write() call be successful?
-                     * Reset error flag to be ready for that. */
-                    write_errno_nospace = FALSE;
                 }
             }
 
